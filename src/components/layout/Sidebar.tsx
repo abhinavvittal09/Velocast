@@ -14,6 +14,7 @@ import {
   LogOut,
   Zap,
   Globe,
+  TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { toast } from 'sonner'
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { label: 'Content', href: '/dashboard/content', icon: Video },
   { label: 'Platforms', href: '/dashboard/platforms', icon: Globe },
   { label: 'Scheduler', href: '/dashboard/scheduler', icon: Calendar },
+  { label: 'Best Times', href: '/dashboard/posting-times', icon: TrendingUp },
   { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
