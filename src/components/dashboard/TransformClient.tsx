@@ -96,6 +96,7 @@ export default function TransformClient({
     new Map(initialJobs.map((j) => [j.platform, j]))
   )
   const [isQueuing, setIsQueuing] = useState(false)
+  const [queuingPlatform, setQueuingPlatform] = useState<string | null>(null)
   const [downloadingPlatform, setDownloadingPlatform] = useState<string | null>(null)
   const [copiedPlatform, setCopiedPlatform] = useState<string | null>(null)
   const [isZipping, setIsZipping] = useState(false)
@@ -271,6 +272,28 @@ export default function TransformClient({
       toast.error('Something went wrong. Please try again.')
     } finally {
       setIsQueuing(false)
+    }
+  }
+
+  // ── Queue a single platform ───────────────────────────────────────────────
+  async function handleGeneratePlatform(platform: Platform) {
+    setQueuingPlatform(platform)
+    try {
+      const endpoint = item.type === 'image' ? '/api/transform/image' : '/api/transform/video'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentItemId: item.id, platforms: [platform] }),
+      })
+      if (res.ok) {
+        toast.success(`${PLATFORM_SPECS[platform].label} queued — processing shortly`)
+      } else {
+        toast.error('Failed to queue. Please try again.')
+      }
+    } catch {
+      toast.error('Something went wrong. Please try again.')
+    } finally {
+      setQueuingPlatform(null)
     }
   }
 
@@ -485,13 +508,34 @@ export default function TransformClient({
                       </div>
                     </div>
                   ) : isFailed && job?.error_message ? (
-                    <p className="text-[10px] text-rose-400/70 truncate" title={job.error_message}>
-                      {job.error_message}
-                    </p>
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-rose-400/70 truncate" title={job.error_message}>
+                        {job.error_message}
+                      </p>
+                      <button
+                        onClick={() => handleGeneratePlatform(platform)}
+                        disabled={queuingPlatform === platform}
+                        className="w-full flex items-center justify-center gap-1 text-[10px] bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 hover:text-rose-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
+                      >
+                        {queuingPlatform === platform
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <Zap className="w-3 h-3" />}
+                        Retry
+                      </button>
+                    </div>
+                  ) : isPending || isProcessing ? (
+                    <span className="text-[10px] text-white/20">—</span>
                   ) : (
-                    <span className="text-[10px] text-white/20">
-                      {isPending || isProcessing ? '—' : 'Click Generate All'}
-                    </span>
+                    <button
+                      onClick={() => handleGeneratePlatform(platform)}
+                      disabled={queuingPlatform === platform || isQueuing}
+                      className="w-full flex items-center justify-center gap-1 text-[10px] bg-brand-600/15 hover:bg-brand-600/30 text-brand-400 hover:text-brand-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
+                    >
+                      {queuingPlatform === platform
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <Zap className="w-3 h-3" />}
+                      Generate
+                    </button>
                   )}
                 </div>
               </div>

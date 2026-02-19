@@ -123,9 +123,14 @@ async function processJob(
       contentType = 'image/jpeg'
 
       variantBuffer = await sharp(originalBuffer)
-        .rotate()
-        .resize(width, height, { fit: 'cover', position: 'attention', withoutEnlargement: false })
-        .jpeg({ quality: 90, mozjpeg: true })
+        .rotate()                                // honour EXIF orientation
+        .resize(width, height, {
+          fit: 'cover',
+          position: 'attention',                 // smart-crop: keeps faces/subjects centred
+          kernel: 'lanczos3',                    // highest-quality downscale filter
+          withoutEnlargement: false,
+        })
+        .jpeg({ quality: 95, mozjpeg: true, chromaSubsampling: '4:4:4' })  // near-lossless, full chroma
         .toBuffer()
 
     } else {
@@ -164,8 +169,9 @@ async function processJob(
               '-map', '0:a?',
               '-c:v', 'libx264',
               '-c:a', 'aac',
-              '-crf', '23',
-              '-preset', 'fast',
+              '-crf', '18',              // high quality (18=near-lossless, 23=default)
+              '-preset', 'medium',       // better quality/compression than 'fast'
+              '-b:v', '0',               // force CRF mode (no target bitrate)
               '-movflags', '+faststart',
               '-pix_fmt', 'yuv420p',
             ])
