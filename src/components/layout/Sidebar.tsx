@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   Zap,
+  Globe,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { toast } from 'sonner'
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, exact: true },
   { label: 'Upload', href: '/dashboard/upload', icon: Upload },
   { label: 'Content', href: '/dashboard/content', icon: Video },
+  { label: 'Platforms', href: '/dashboard/platforms', icon: Globe },
   { label: 'Scheduler', href: '/dashboard/scheduler', icon: Calendar },
   { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings },
