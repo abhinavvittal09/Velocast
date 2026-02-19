@@ -8,7 +8,7 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverComponentsExternalPackages: ['sharp', 'fluent-ffmpeg'],
+    serverComponentsExternalPackages: ['sharp', 'fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
   },
 }
 
