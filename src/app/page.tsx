@@ -1,18 +1,26 @@
 import Link from 'next/link'
 import {
-  ArrowRight, Check, Upload, Zap, Globe, BarChart3,
+  ArrowRight, Check, Upload, Zap, BarChart3,
   Sparkles, Clock, Layers, Play,
 } from 'lucide-react'
+import {
+  YouTubeLogo,
+  TikTokLogo,
+  InstagramLogo,
+  LinkedInLogo,
+  TwitterXLogo,
+  FacebookLogo,
+} from '@/components/icons/PlatformLogos'
 
 /* ─── Data ─── */
 
 const platforms = [
-  { name: 'YouTube',   color: '#FF0000' },
-  { name: 'TikTok',    color: '#69C9D0' },
-  { name: 'Instagram', color: '#E1306C' },
-  { name: 'LinkedIn',  color: '#0A66C2' },
-  { name: 'Twitter/X', color: '#ffffff' },
-  { name: 'Facebook',  color: '#1877F2' },
+  { name: 'YouTube',   Logo: YouTubeLogo   },
+  { name: 'TikTok',    Logo: TikTokLogo    },
+  { name: 'Instagram', Logo: InstagramLogo },
+  { name: 'LinkedIn',  Logo: LinkedInLogo  },
+  { name: 'Twitter/X', Logo: TwitterXLogo  },
+  { name: 'Facebook',  Logo: FacebookLogo  },
 ]
 
 const features = [
@@ -289,18 +297,20 @@ export default function LandingPage() {
             </a>
           </div>
 
-          {/* Platform badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2 animate-fade-in delay-400">
-            <span className="text-[11px] text-white/25 mr-1">Works with</span>
-            {platforms.map((p) => (
-              <div
-                key={p.name}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.06] text-[11px] text-white/50 hover:text-white/80 transition-colors cursor-default"
-              >
-                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                {p.name}
-              </div>
-            ))}
+          {/* Platform logos strip */}
+          <div className="animate-fade-in delay-400">
+            <p className="text-[11px] text-white/25 mb-4 tracking-wide">Publish natively to</p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {platforms.map(({ name, Logo }) => (
+                <div
+                  key={name}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12] transition-all duration-200 cursor-default group"
+                >
+                  <Logo className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-[11px] text-white/50 group-hover:text-white/80 transition-colors">{name}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -308,19 +318,32 @@ export default function LandingPage() {
         <DashboardMockup />
       </section>
 
-      {/* ─── Stats bar ─── */}
+      {/* ─── Stats + Logo strip ─── */}
       <div className="border-y border-white/[0.05] py-10 px-6 mt-16">
-        <div className="max-w-3xl mx-auto grid grid-cols-3 gap-6 text-center">
-          {[
-            { value: '9',    label: 'Platforms supported' },
-            { value: '<2m',  label: 'Average time to publish' },
-            { value: '100%', label: 'Free to get started' },
-          ].map((s) => (
-            <div key={s.label}>
-              <div className="text-3xl sm:text-4xl font-bold gradient-text mb-1">{s.value}</div>
-              <div className="text-xs text-white/35 tracking-wide">{s.label}</div>
-            </div>
-          ))}
+        <div className="max-w-4xl mx-auto space-y-8">
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-6 text-center">
+            {[
+              { value: '9',    label: 'Platforms supported' },
+              { value: '<2m',  label: 'Average time to publish' },
+              { value: '100%', label: 'Free to get started' },
+            ].map((s) => (
+              <div key={s.label}>
+                <div className="text-3xl sm:text-4xl font-bold gradient-text mb-1">{s.value}</div>
+                <div className="text-xs text-white/35 tracking-wide">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Logo row */}
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+            {platforms.map(({ name, Logo }) => (
+              <div key={name} className="flex items-center gap-1.5 opacity-50 hover:opacity-90 transition-opacity duration-200" title={name}>
+                <Logo className="w-5 h-5" />
+                <span className="text-[11px] text-white/60 hidden sm:block">{name}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
