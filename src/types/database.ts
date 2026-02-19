@@ -10,6 +10,9 @@ export type Database = {
         Row: {
           id: string
           full_name: string | null
+          first_name: string | null
+          last_name: string | null
+          phone: string | null
           avatar_url: string | null
           username: string | null
           plan: 'free' | 'creator' | 'pro' | 'brand'
