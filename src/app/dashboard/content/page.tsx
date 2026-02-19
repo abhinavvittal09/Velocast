@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { Metadata } from 'next'
 import Link from 'next/link'
-import { Upload, FileVideo, Clock, Layers } from 'lucide-react'
+import { Upload, FileVideo, Clock, Layers, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 export const metadata: Metadata = { title: 'Content Library' }
@@ -48,7 +48,11 @@ export default async function ContentPage() {
             const variantCount = (item.content_variants as { id: string; platform: string }[] | null)?.length ?? 0
 
             return (
-              <div key={item.id} className="card p-0 overflow-hidden group hover:border-brand-600/50 transition-colors">
+              <Link
+                key={item.id}
+                href={`/dashboard/transform/${item.id}`}
+                className="card p-0 overflow-hidden group hover:border-brand-600/50 transition-colors block"
+              >
                 {/* Thumbnail */}
                 <div className="aspect-video bg-surface flex items-center justify-center relative">
                   {item.type === 'video' ? (
@@ -81,7 +85,10 @@ export default async function ContentPage() {
 
                 {/* Info */}
                 <div className="p-3">
-                  <p className="font-medium text-sm truncate mb-1">{item.title ?? 'Untitled'}</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-medium text-sm truncate flex-1">{item.title ?? 'Untitled'}</p>
+                    <ChevronRight className="w-3.5 h-3.5 text-white/20 group-hover:text-brand-400 transition-colors flex-shrink-0 ml-1" />
+                  </div>
                   <div className="flex items-center justify-between text-xs text-white/40">
                     <div className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
@@ -98,7 +105,7 @@ export default async function ContentPage() {
                     {(item.file_size / 1024 / 1024).toFixed(1)} MB
                   </p>
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>
