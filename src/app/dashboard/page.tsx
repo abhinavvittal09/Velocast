@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { Upload, Video, Calendar, BarChart3, TrendingUp, Zap } from 'lucide-react'
 import Link from 'next/link'
+import type { Database } from '@/types/database'
+
+type Profile = Database['public']['Tables']['profiles']['Row']
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -10,7 +13,7 @@ export default async function DashboardPage() {
     .from('profiles')
     .select('*')
     .eq('id', user!.id)
-    .single()
+    .single() as { data: Profile | null }
 
   const { count: contentCount } = await supabase
     .from('content_items')
