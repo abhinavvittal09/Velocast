@@ -1,24 +1,6 @@
-import { createServerClient, type CookieMethodsServer } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { Database } from '@/types/database'
-
-function cookieMethods(): CookieMethodsServer {
-  const cookieStore = cookies() as ReturnType<typeof cookies> extends Promise<infer T> ? T : ReturnType<typeof cookies>
-  return {
-    getAll() {
-      return (cookieStore as any).getAll()
-    },
-    setAll(cookiesToSet: Array<{ name: string; value: string; options?: object }>) {
-      try {
-        cookiesToSet.forEach(({ name, value, options }) =>
-          (cookieStore as any).set(name, value, options)
-        )
-      } catch {
-        // Server component — cookies will be set by middleware
-      }
-    },
-  }
-}
 
 export async function createClient() {
   const cookieStore = await cookies()

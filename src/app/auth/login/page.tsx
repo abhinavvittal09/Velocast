@@ -1,20 +1,27 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [magicLinkSent, setMagicLinkSent] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  function getRedirectPath() {
+    const redirectTo = searchParams.get('redirectTo')
+    if (redirectTo && redirectTo.startsWith('/')) return redirectTo
+    return '/dashboard'
+  }
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -22,7 +29,7 @@ export default function LoginPage() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-      router.push('/dashboard')
+      router.push(getRedirectPath())
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -151,5 +158,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

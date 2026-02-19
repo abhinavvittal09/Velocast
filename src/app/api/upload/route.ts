@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
         file_size: file.size,
         storage_path: storagePath,
         status: 'ready',
-        metadata: { original_mime_type: file.type },
       })
       .select('id')
       .single()

@@ -40,7 +40,7 @@ export default async function DashboardPage() {
     { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart3, desc: 'Track your performance' },
   ]
 
-  const firstName = profile?.full_name?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Creator'
+  const firstName = profile?.first_name ?? profile?.full_name?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Creator'
 
   return (
     <div className="space-y-8 animate-fade-in">
