@@ -99,11 +99,15 @@ export default function UploadClient() {
       const { contentItemId, type } = await res.json()
       setProgress(80)
 
-      // ── Step 2: Generate platform variants (images only) ──
-      if (type === 'image') {
+      // ── Step 2: Generate platform variants ───────────────
+      if (type === 'image' || type === 'video') {
         setStatus('processing')
 
-        const transformRes = await fetch('/api/transform/image', {
+        const transformEndpoint = type === 'image'
+          ? '/api/transform/image'
+          : '/api/transform/video'
+
+        const transformRes = await fetch(transformEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contentItemId }),
@@ -116,8 +120,6 @@ export default function UploadClient() {
           // Non-fatal — upload succeeded, transforms failed
           toast.success('Uploaded! Platform variants will be generated shortly.')
         }
-      } else {
-        toast.success('Video uploaded successfully!')
       }
 
       setProgress(100)
@@ -258,7 +260,9 @@ export default function UploadClient() {
               </div>
               {status === 'processing' && (
                 <p className="text-[11px] text-white/35">
-                  Resizing for Instagram, YouTube, TikTok, LinkedIn, Twitter & Facebook…
+                  {preview?.type === 'video'
+                    ? 'Converting for TikTok, Reels, YouTube, LinkedIn, Twitter & more…'
+                    : 'Resizing for Instagram, YouTube, TikTok, LinkedIn, Twitter & Facebook…'}
                 </p>
               )}
             </div>
