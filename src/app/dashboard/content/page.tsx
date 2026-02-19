@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { Metadata } from 'next'
 import Link from 'next/link'
-import { Upload, FileVideo, FileImage, Clock } from 'lucide-react'
+import { Upload, FileVideo, Clock, Layers } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 export const metadata: Metadata = { title: 'Content Library' }
@@ -10,9 +10,10 @@ export default async function ContentPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Fetch items with variant counts
   const { data: items } = await supabase
     .from('content_items')
-    .select('*')
+    .select('*, content_variants(id, platform)')
     .eq('user_id', user!.id)
     .order('created_at', { ascending: false })
 
@@ -43,51 +44,63 @@ export default async function ContentPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {items.map((item) => (
-            <div key={item.id} className="card p-0 overflow-hidden group hover:border-brand-600/50 transition-colors">
-              {/* Thumbnail */}
-              <div className="aspect-video bg-surface flex items-center justify-center relative">
-                {item.type === 'video' ? (
-                  <FileVideo className="w-10 h-10 text-white/20" />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.original_url}
-                    alt={item.title ?? ''}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                )}
-                <div className="absolute top-2 left-2">
-                  <span className={`badge ${item.type === 'video' ? 'badge-brand' : 'badge-success'}`}>
-                    {item.type === 'video' ? '🎬 Video' : '🖼 Image'}
-                  </span>
-                </div>
-                <div className="absolute top-2 right-2">
-                  <span className={`badge ${
-                    item.status === 'ready' ? 'badge-success' :
-                    item.status === 'error' ? 'badge-error' : 'badge-warning'
-                  }`}>
-                    {item.status}
-                  </span>
-                </div>
-              </div>
+          {items.map((item) => {
+            const variantCount = (item.content_variants as { id: string; platform: string }[] | null)?.length ?? 0
 
-              {/* Info */}
-              <div className="p-3">
-                <p className="font-medium text-sm truncate mb-1">{item.title ?? 'Untitled'}</p>
-                <div className="flex items-center gap-1 text-xs text-white/40">
-                  <Clock className="w-3 h-3" />
-                  {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+            return (
+              <div key={item.id} className="card p-0 overflow-hidden group hover:border-brand-600/50 transition-colors">
+                {/* Thumbnail */}
+                <div className="aspect-video bg-surface flex items-center justify-center relative">
+                  {item.type === 'video' ? (
+                    <FileVideo className="w-10 h-10 text-white/20" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.original_url}
+                      alt={item.title ?? ''}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  )}
+                  <div className="absolute top-2 left-2">
+                    <span className={`badge ${item.type === 'video' ? 'badge-brand' : 'badge-success'}`}>
+                      {item.type === 'video' ? '🎬 Video' : '🖼 Image'}
+                    </span>
+                  </div>
+                  <div className="absolute top-2 right-2">
+                    <span className={`badge ${
+                      item.status === 'ready' ? 'badge-success' :
+                      item.status === 'error' ? 'badge-error' : 'badge-warning'
+                    }`}>
+                      {item.status}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-xs text-white/40 mt-0.5">
-                  {(item.file_size / 1024 / 1024).toFixed(1)} MB
-                </p>
+
+                {/* Info */}
+                <div className="p-3">
+                  <p className="font-medium text-sm truncate mb-1">{item.title ?? 'Untitled'}</p>
+                  <div className="flex items-center justify-between text-xs text-white/40">
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                    </div>
+                    {variantCount > 0 && (
+                      <div className="flex items-center gap-1 text-brand-400">
+                        <Layers className="w-3 h-3" />
+                        {variantCount} variant{variantCount !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/40 mt-0.5">
+                    {(item.file_size / 1024 / 1024).toFixed(1)} MB
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

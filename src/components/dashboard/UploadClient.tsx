@@ -83,16 +83,12 @@ export default function UploadClient() {
       formData.append('file', preview.file)
       formData.append('title', title || preview.file.name)
 
-      // Simulate progress during upload
+      // ── Step 1: Upload original ──────────────────────────
       const progressInterval = setInterval(() => {
-        setProgress((p) => Math.min(p + 8, 85))
+        setProgress((p) => Math.min(p + 8, 75))
       }, 300)
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
       clearInterval(progressInterval)
 
       if (!res.ok) {
@@ -100,10 +96,32 @@ export default function UploadClient() {
         throw new Error(data.error ?? 'Upload failed')
       }
 
-      const { contentItemId } = await res.json()
+      const { contentItemId, type } = await res.json()
+      setProgress(80)
+
+      // ── Step 2: Generate platform variants (images only) ──
+      if (type === 'image') {
+        setStatus('processing')
+
+        const transformRes = await fetch('/api/transform/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contentItemId }),
+        })
+
+        if (transformRes.ok) {
+          const result = await transformRes.json()
+          toast.success(`Uploaded + generated ${result.succeeded} platform variants!`)
+        } else {
+          // Non-fatal — upload succeeded, transforms failed
+          toast.success('Uploaded! Platform variants will be generated shortly.')
+        }
+      } else {
+        toast.success('Video uploaded successfully!')
+      }
+
       setProgress(100)
       setStatus('done')
-      toast.success('Upload complete! Preparing your content...')
 
       setTimeout(() => {
         router.push(`/dashboard/content?new=${contentItemId}`)
@@ -218,18 +236,31 @@ export default function UploadClient() {
           </div>
 
           {/* Progress bar */}
-          {(status === 'uploading' || status === 'done') && (
+          {(status === 'uploading' || status === 'processing' || status === 'done') && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-white/60">
-                <span>{status === 'done' ? 'Complete!' : 'Uploading...'}</span>
+                <span>
+                  {status === 'done'
+                    ? 'Complete!'
+                    : status === 'processing'
+                    ? 'Generating platform variants...'
+                    : 'Uploading...'}
+                </span>
                 <span>{progress}%</span>
               </div>
               <div className="h-1.5 bg-surface-border rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-brand-500 rounded-full transition-all duration-300"
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    status === 'processing' ? 'bg-purple-500' : 'bg-brand-500'
+                  }`}
                   style={{ width: `${progress}%` }}
                 />
               </div>
+              {status === 'processing' && (
+                <p className="text-[11px] text-white/35">
+                  Resizing for Instagram, YouTube, TikTok, LinkedIn, Twitter & Facebook…
+                </p>
+              )}
             </div>
           )}
 
@@ -255,6 +286,10 @@ export default function UploadClient() {
             ) : status === 'uploading' ? (
               <button disabled className="btn-primary flex-1 justify-center opacity-70">
                 <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
+              </button>
+            ) : status === 'processing' ? (
+              <button disabled className="btn-primary flex-1 justify-center opacity-70" style={{ background: 'rgb(126 34 206 / 0.8)' }}>
+                <Loader2 className="w-4 h-4 animate-spin" /> Generating variants...
               </button>
             ) : status === 'done' ? (
               <div className="flex items-center gap-2 text-emerald-400 font-medium w-full justify-center">
