@@ -13,7 +13,7 @@ export default async function DashboardPage() {
     .from('profiles')
     .select('*')
     .eq('id', user!.id)
-    .single() as { data: Profile | null }
+    .maybeSingle() as { data: Profile | null }
 
   const { count: contentCount } = await supabase
     .from('content_items')

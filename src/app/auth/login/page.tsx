@@ -19,7 +19,7 @@ function LoginForm() {
 
   function getRedirectPath() {
     const redirectTo = searchParams.get('redirectTo')
-    if (redirectTo && redirectTo.startsWith('/')) return redirectTo
+    if (redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')) return redirectTo
     return '/dashboard'
   }
 

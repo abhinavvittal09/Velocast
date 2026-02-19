@@ -127,7 +127,7 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
     setIsDeleting(true)
     let deletedCount = 0
 
-    for (const id of selectedIds) {
+    for (const id of Array.from(selectedIds)) {
       const res = await fetch(`/api/content/${id}`, { method: 'DELETE' })
       if (res.ok) {
         deletedCount++

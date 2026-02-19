@@ -131,6 +131,8 @@ export async function POST(request: NextRequest) {
 
         if (upsertError) {
           console.error(`DB upsert error [${platform}]:`, upsertError)
+          // Clean up orphaned storage file
+          await admin.storage.from('processed').remove([storagePath])
           errors.push({ platform, error: upsertError.message })
           continue
         }
