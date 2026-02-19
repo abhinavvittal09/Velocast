@@ -85,4 +85,58 @@
     @apply bg-gradient-to-r from-brand-400 to-purple-400 bg-clip-text text-transparent;
   }
 
+  /* Landing page hero glow */
+  .hero-glow {
+    background: radial-gradient(ellipse 90% 55% at 50% -10%, rgba(79, 82, 229, 0.18) 0%, transparent 70%);
+  }
+
+  /* Subtle dot grid background */
+  .dot-grid {
+    background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* Gradient border card */
+  .card-glow {
+    position: relative;
+    background: rgba(22, 22, 42, 0.8);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 1rem;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .card-glow:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 0 30px rgba(79, 82, 229, 0.08);
+  }
+
+  /* Shimmer badge animation */
+  @keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  .shimmer {
+    background: linear-gradient(90deg, #6366f1 0%, #a78bfa 40%, #6366f1 80%);
+    background-size: 200% auto;
+    animation: shimmer 3s linear infinite;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Floating animation */
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50%        { transform: translateY(-6px); }
+  }
+  .animate-float {
+    animation: float 4s ease-in-out infinite;
+  }
+
+  /* Staggered fade-in helpers */
+  .delay-100 { animation-delay: 100ms; animation-fill-mode: both; }
+  .delay-200 { animation-delay: 200ms; animation-fill-mode: both; }
+  .delay-300 { animation-delay: 300ms; animation-fill-mode: both; }
+  .delay-400 { animation-delay: 400ms; animation-fill-mode: both; }
+  .delay-500 { animation-delay: 500ms; animation-fill-mode: both; }
+  .delay-600 { animation-delay: 600ms; animation-fill-mode: both; }
 }
