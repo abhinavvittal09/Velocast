@@ -14,12 +14,19 @@ export default async function TransformPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { data: item } = await supabase
-    .from('content_items')
-    .select('*, content_variants(*)')
-    .eq('id', params.contentItemId)
-    .eq('user_id', user.id)
-    .single()
+  const [{ data: item }, { data: jobs }] = await Promise.all([
+    supabase
+      .from('content_items')
+      .select('*, content_variants(*)')
+      .eq('id', params.contentItemId)
+      .eq('user_id', user.id)
+      .single(),
+    supabase
+      .from('transform_jobs')
+      .select('*')
+      .eq('content_item_id', params.contentItemId)
+      .order('created_at', { ascending: true }),
+  ])
 
   if (!item) notFound()
 
@@ -36,9 +43,19 @@ export default async function TransformPage({
     created_at: string
   }>
 
+  const initialJobs = (jobs ?? []) as Array<{
+    id: string
+    content_item_id: string
+    platform: string
+    type: string
+    status: 'pending' | 'processing' | 'done' | 'failed'
+    error_message: string | null
+    created_at: string
+  }>
+
   return (
     <div className="animate-fade-in">
-      <TransformClient item={item} initialVariants={variants} />
+      <TransformClient item={item} initialVariants={variants} initialJobs={initialJobs} />
     </div>
   )
 }

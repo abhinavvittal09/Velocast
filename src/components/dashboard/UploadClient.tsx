@@ -115,10 +115,10 @@ export default function UploadClient() {
 
         if (transformRes.ok) {
           const result = await transformRes.json()
-          toast.success(`Uploaded + generated ${result.succeeded} platform variants!`)
+          toast.success(`Uploaded! ${result.queued} platform variants queued for processing.`)
         } else {
-          // Non-fatal — upload succeeded, transforms failed
-          toast.success('Uploaded! Platform variants will be generated shortly.')
+          // Non-fatal — upload succeeded, transform queue failed
+          toast.success('Uploaded! Head to the transform page to generate platform variants.')
         }
       }
 

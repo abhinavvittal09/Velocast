@@ -340,12 +340,78 @@ export type Database = {
           }
         ]
       }
+      transform_jobs: {
+        Row: {
+          id: string
+          user_id: string
+          content_item_id: string
+          platform: string
+          type: string
+          status: 'pending' | 'processing' | 'done' | 'failed'
+          priority: number
+          started_at: string | null
+          completed_at: string | null
+          error_message: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          content_item_id: string
+          platform: string
+          type: string
+          status?: 'pending' | 'processing' | 'done' | 'failed'
+          priority?: number
+          started_at?: string | null
+          completed_at?: string | null
+          error_message?: string | null
+          created_at?: string
+        }
+        Update: {
+          status?: 'pending' | 'processing' | 'done' | 'failed'
+          started_at?: string | null
+          completed_at?: string | null
+          error_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'transform_jobs_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'transform_jobs_content_item_id_fkey'
+            columns: ['content_item_id']
+            isOneToOne: false
+            referencedRelation: 'content_items'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: { [_ in never]: never }
     Functions: {
       increment_uploads: {
         Args: { user_id: string }
         Returns: undefined
+      }
+      claim_transform_jobs: {
+        Args: { batch_size?: number }
+        Returns: {
+          id: string
+          user_id: string
+          content_item_id: string
+          platform: string
+          type: string
+          status: string
+          priority: number
+          started_at: string | null
+          completed_at: string | null
+          error_message: string | null
+          created_at: string
+        }[]
       }
     }
     Enums: { [_ in never]: never }
