@@ -21,6 +21,9 @@ import {
   Loader2,
   Clock,
   AlertCircle,
+  Copy,
+  Check,
+  Archive,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
@@ -93,6 +96,9 @@ export default function TransformClient({
     new Map(initialJobs.map((j) => [j.platform, j]))
   )
   const [isQueuing, setIsQueuing] = useState(false)
+  const [downloadingPlatform, setDownloadingPlatform] = useState<string | null>(null)
+  const [copiedPlatform, setCopiedPlatform] = useState<string | null>(null)
+  const [isZipping, setIsZipping] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
   const targetPlatforms = item.type === 'image' ? IMAGE_PLATFORMS : VIDEO_PLATFORMS
@@ -155,6 +161,93 @@ export default function TransformClient({
     return () => { supabase.removeChannel(jobChannel) }
   }, [item.id, supabase])
 
+  // ── Get signed URL from API ───────────────────────────────────────────────
+  async function getSignedUrl(variant: ContentVariant): Promise<{ signedUrl: string; filename: string } | null> {
+    const res = await fetch('/api/download/signed-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storagePath: variant.storage_path,
+        platform: variant.platform,
+        width: variant.width,
+        height: variant.height,
+        title: item.title ?? undefined,
+      }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  }
+
+  // ── Single file download ──────────────────────────────────────────────────
+  async function handleDownload(variant: ContentVariant) {
+    setDownloadingPlatform(variant.platform)
+    try {
+      const result = await getSignedUrl(variant)
+      if (!result) { toast.error('Failed to generate download link'); return }
+      const a = document.createElement('a')
+      a.href = result.signedUrl
+      a.download = result.filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch {
+      toast.error('Download failed')
+    } finally {
+      setDownloadingPlatform(null)
+    }
+  }
+
+  // ── Copy shareable link ───────────────────────────────────────────────────
+  async function handleCopyLink(variant: ContentVariant) {
+    try {
+      const result = await getSignedUrl(variant)
+      if (!result) { toast.error('Failed to generate link'); return }
+      await navigator.clipboard.writeText(result.signedUrl)
+      setCopiedPlatform(variant.platform)
+      toast.success('Link copied — valid for 1 hour')
+      setTimeout(() => setCopiedPlatform(null), 2000)
+    } catch {
+      toast.error('Failed to copy link')
+    }
+  }
+
+  // ── Bulk ZIP download ─────────────────────────────────────────────────────
+  async function handleDownloadAll() {
+    setIsZipping(true)
+    try {
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+
+      const readyVariants = targetPlatforms
+        .map((p) => variantMap.get(p))
+        .filter(Boolean) as ContentVariant[]
+
+      await Promise.all(
+        readyVariants.map(async (variant) => {
+          const result = await getSignedUrl(variant)
+          if (!result) return
+          const blob = await fetch(result.signedUrl).then((r) => r.blob())
+          zip.file(result.filename, blob)
+        })
+      )
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `velocast_${(item.title ?? 'content').replace(/[^a-zA-Z0-9_-]/g, '_')}_all_platforms.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`Downloaded ${readyVariants.length} platform variants`)
+    } catch {
+      toast.error('Failed to create ZIP')
+    } finally {
+      setIsZipping(false)
+    }
+  }
+
   // ── Queue all platforms ───────────────────────────────────────────────────
   async function handleGenerate() {
     setIsQueuing(true)
@@ -199,13 +292,24 @@ export default function TransformClient({
             )}
           </p>
         </div>
-        <button onClick={handleGenerate} disabled={isQueuing} className="btn-primary">
-          {isQueuing ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Queuing…</>
-          ) : (
-            <><Zap className="w-4 h-4" /> Generate All</>
+        <div className="flex items-center gap-2">
+          {doneCount > 0 && (
+            <button onClick={handleDownloadAll} disabled={isZipping} className="btn-secondary">
+              {isZipping ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Zipping…</>
+              ) : (
+                <><Archive className="w-4 h-4" /> Download All</>
+              )}
+            </button>
           )}
-        </button>
+          <button onClick={handleGenerate} disabled={isQueuing} className="btn-primary">
+            {isQueuing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Queuing…</>
+            ) : (
+              <><Zap className="w-4 h-4" /> Generate All</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* ── Main layout ────────────────────────────────────────────────────── */}
@@ -354,19 +458,31 @@ export default function TransformClient({
                     {dims ? `${dims.width} × ${dims.height} · ${dims.ratio}` : '—'}
                   </p>
                   {variant ? (
-                    <div className="flex items-center justify-between">
+                    <div className="space-y-1.5">
                       <span className="text-[10px] text-white/30">
                         {(variant.file_size / 1024 / 1024).toFixed(1)} MB
                       </span>
-                      <a
-                        href={variant.variant_url}
-                        download
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
-                      >
-                        <Download className="w-3 h-3" /> Save
-                      </a>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleDownload(variant)}
+                          disabled={downloadingPlatform === variant.platform}
+                          className="flex-1 flex items-center justify-center gap-1 text-[10px] bg-brand-600/20 hover:bg-brand-600/40 text-brand-400 hover:text-brand-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
+                        >
+                          {downloadingPlatform === variant.platform
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <Download className="w-3 h-3" />}
+                          Save
+                        </button>
+                        <button
+                          onClick={() => handleCopyLink(variant)}
+                          className="flex items-center justify-center gap-1 text-[10px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded px-1.5 py-1 transition-colors"
+                          title="Copy shareable link (valid 1 hour)"
+                        >
+                          {copiedPlatform === variant.platform
+                            ? <Check className="w-3 h-3 text-emerald-400" />
+                            : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
                     </div>
                   ) : isFailed && job?.error_message ? (
                     <p className="text-[10px] text-rose-400/70 truncate" title={job.error_message}>
