@@ -1,11 +1,25 @@
 -- =============================================
 -- Velocast — Initial Database Schema
--- Run this in Supabase SQL Editor
+-- Safe to re-run: drops existing tables first
 -- =============================================
 
 -- Enable extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_cron";
+
+-- ── Drop existing tables (safe re-run) ───────────────────
+DROP TABLE IF EXISTS public.waitlist CASCADE;
+DROP TABLE IF EXISTS public.transform_jobs CASCADE;
+DROP TABLE IF EXISTS public.ai_usage_logs CASCADE;
+DROP TABLE IF EXISTS public.analytics_snapshots CASCADE;
+DROP TABLE IF EXISTS public.posts CASCADE;
+DROP TABLE IF EXISTS public.content_variants CASCADE;
+DROP TABLE IF EXISTS public.content_items CASCADE;
+DROP TABLE IF EXISTS public.connected_accounts CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+
+-- Drop existing triggers and functions
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user();
 
 -- ── Profiles ──────────────────────────────────────────────
 CREATE TABLE public.profiles (
@@ -127,14 +141,14 @@ CREATE TABLE public.analytics_snapshots (
 
 -- ── AI Usage Logs ─────────────────────────────────────────
 CREATE TABLE public.ai_usage_logs (
-  id           UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  user_id      UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  feature      TEXT NOT NULL, -- 'caption', 'hashtag', 'subtitle', 'brief'
-  model        TEXT NOT NULL,
-  input_tokens INT DEFAULT 0,
+  id            UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id       UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  feature       TEXT NOT NULL,
+  model         TEXT NOT NULL,
+  input_tokens  INT DEFAULT 0,
   output_tokens INT DEFAULT 0,
-  cost_usd     NUMERIC DEFAULT 0,
-  created_at   TIMESTAMPTZ DEFAULT now()
+  cost_usd      NUMERIC DEFAULT 0,
+  created_at    TIMESTAMPTZ DEFAULT now()
 );
 
 -- ── Transform Jobs ────────────────────────────────────────
@@ -179,7 +193,7 @@ ALTER TABLE public.analytics_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_usage_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transform_jobs ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies
+-- ── RLS Policies ─────────────────────────────────────────
 CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
