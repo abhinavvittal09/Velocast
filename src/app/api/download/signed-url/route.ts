@@ -27,8 +27,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'storagePath is required' }, { status: 400 })
     }
 
-    // Security: only allow access to this user's own files
-    if (!storagePath.startsWith(`processed/${user.id}/`)) {
+    // Security: storage paths are relative to the 'processed' bucket root,
+    // formatted as {user_id}/{content_item_id}/{platform}.ext
+    if (!storagePath.startsWith(`${user.id}/`)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

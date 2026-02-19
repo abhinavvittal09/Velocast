@@ -145,10 +145,15 @@ async function processJob(
 
       try {
         await new Promise<void>((resolve, reject) => {
+          // bg: scale up to cover target, center-crop, blur
+          // fg: scale down to fit target (preserving AR), then round to even
+          //     dimensions — libx264 requires both dims to be divisible by 2.
+          //     e.g. 9:16 → 16:9 produces fg width ≈ 607 (odd) without the fix.
           const filterComplex = [
             `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,`,
             `crop=${width}:${height},boxblur=20:1[bg];`,
-            `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease[fg];`,
+            `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,`,
+            `scale=trunc(iw/2)*2:trunc(ih/2)*2[fg];`,
             `[bg][fg]overlay=(W-w)/2:(H-h)/2[v]`,
           ].join('')
 
