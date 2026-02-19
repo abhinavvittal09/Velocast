@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { PLATFORM_SPECS, ALL_PLATFORMS, type Platform } from '@/lib/constants/platforms'
+import { waitUntil } from '@vercel/functions'
 
 export const runtime = 'nodejs'
 
@@ -46,19 +47,22 @@ export async function POST(request: NextRequest) {
       .from('transform_jobs')
       .select('platform')
       .eq('content_item_id', contentItemId)
+      .in('platform', targetPlatforms)
       .eq('status', 'processing')
 
     const processingSet = new Set((processingJobs ?? []).map((j) => j.platform))
 
-    // Delete non-processing jobs for this item (allow clean re-queue)
-    await admin
-      .from('transform_jobs')
-      .delete()
-      .eq('content_item_id', contentItemId)
-      .neq('status', 'processing')
-
-    // Enqueue one job per platform (skip any currently processing)
+    // Delete existing non-processing jobs only for the target platforms so we
+    // don't accidentally wipe jobs for other platforms the user didn't request.
     const platformsToQueue = targetPlatforms.filter((p) => !processingSet.has(p))
+    if (platformsToQueue.length > 0) {
+      await admin
+        .from('transform_jobs')
+        .delete()
+        .eq('content_item_id', contentItemId)
+        .in('platform', platformsToQueue)
+        .neq('status', 'processing')
+    }
 
     if (platformsToQueue.length > 0) {
       const { error: insertError } = await admin.from('transform_jobs').insert(
@@ -74,6 +78,14 @@ export async function POST(request: NextRequest) {
         console.error('Job enqueue error:', insertError)
         return NextResponse.json({ error: 'Failed to queue jobs' }, { status: 500 })
       }
+
+      // Trigger the job processor immediately so jobs don't wait for the daily cron.
+      // waitUntil keeps the function alive after the response is sent.
+      const processorUrl = new URL('/api/jobs/process', request.url).toString()
+      const authHeaders: HeadersInit = process.env.CRON_SECRET
+        ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
+        : {}
+      waitUntil(fetch(processorUrl, { headers: authHeaders }))
     }
 
     return NextResponse.json({

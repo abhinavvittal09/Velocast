@@ -47,6 +47,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Redirect authenticated users away from the landing page to the dashboard.
+  // This handles the case where OAuth completes and the browser lands on "/" instead
+  // of "/dashboard" (e.g. when Supabase falls back to the site URL).
+  if (pathname === '/' && user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    return NextResponse.redirect(url)
+  }
+
   return supabaseResponse
 }
 

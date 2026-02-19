@@ -12,7 +12,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
+      // On Vercel, request.url may carry an internal host; use x-forwarded-host
+      // to build the correct public redirect URL.
+      const forwardedHost = request.headers.get('x-forwarded-host')
+      const redirectBase = forwardedHost ? `https://${forwardedHost}` : origin
+      return NextResponse.redirect(`${redirectBase}${next}`)
     }
   }
 
