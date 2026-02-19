@@ -5,6 +5,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/scheduler/run",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/analytics-sync",
       "schedule": "0 6 * * *"
     },

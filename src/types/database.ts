@@ -227,13 +227,14 @@ export type Database = {
           user_id: string
           content_variant_id: string
           platform: string
-          connected_account_id: string
+          connected_account_id: string | null
           scheduled_at: string | null
           published_at: string | null
           status: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed'
           platform_post_id: string | null
           platform_post_url: string | null
           error_message: string | null
+          caption: string | null
           created_at: string
           updated_at: string
         }
@@ -242,13 +243,14 @@ export type Database = {
           user_id: string
           content_variant_id: string
           platform: string
-          connected_account_id: string
+          connected_account_id?: string | null
           scheduled_at?: string | null
           published_at?: string | null
           status?: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed'
           platform_post_id?: string | null
           platform_post_url?: string | null
           error_message?: string | null
+          caption?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -257,13 +259,14 @@ export type Database = {
           user_id?: string
           content_variant_id?: string
           platform?: string
-          connected_account_id?: string
+          connected_account_id?: string | null
           scheduled_at?: string | null
           published_at?: string | null
           status?: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed'
           platform_post_id?: string | null
           platform_post_url?: string | null
           error_message?: string | null
+          caption?: string | null
           updated_at?: string
         }
         Relationships: [
