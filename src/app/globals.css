@@ -84,4 +84,5 @@
   .gradient-text {
     @apply bg-gradient-to-r from-brand-400 to-purple-400 bg-clip-text text-transparent;
   }
+
 }
