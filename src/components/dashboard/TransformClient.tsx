@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { PLATFORM_SPECS, ALL_PLATFORMS, type Platform } from '@/lib/constants/platforms'
@@ -78,7 +78,7 @@ export default function TransformClient({
   )
   const [isGenerating, setIsGenerating] = useState(false)
 
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const targetPlatforms = item.type === 'image' ? IMAGE_PLATFORMS : VIDEO_PLATFORMS
   const doneCount = targetPlatforms.filter((p) => variantMap.has(p)).length
 
@@ -101,12 +101,16 @@ export default function TransformClient({
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('Realtime subscription error for variants:', item.id)
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [item.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [item.id, supabase])
 
   // ── Generate all platforms ─────────────────────────────────────────────────
   async function handleGenerate() {
