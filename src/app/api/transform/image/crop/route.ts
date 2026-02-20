@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     const storagePath = `${user.id}/${contentItemId}/${platform}.jpg`
     const uploadBlob = new Blob([new Uint8Array(variantBuffer)], { type: 'image/jpeg' })
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await admin.storage
       .from('processed')
       .upload(storagePath, uploadBlob, { contentType: 'image/jpeg', upsert: true })
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 })
     }
 
-    const { data: { publicUrl } } = supabase.storage.from('processed').getPublicUrl(storagePath)
+    const { data: { publicUrl } } = admin.storage.from('processed').getPublicUrl(storagePath)
 
     // Upsert content_variant
     const { error: upsertError } = await admin
