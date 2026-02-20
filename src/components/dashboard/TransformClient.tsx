@@ -288,11 +288,10 @@ export default function TransformClient({
       if (res.ok) {
         toast.success(`${PLATFORM_SPECS[platform].label} queued — processing shortly`)
       } else {
-        const body = await res.json().catch(() => ({}))
-        toast.error(`Error ${res.status}: ${body.error ?? body.detail ?? 'Unknown error'}`)
+        toast.error('Failed to queue. Please try again.')
       }
     } catch (e) {
-      toast.error(`Network error: ${e instanceof Error ? e.message : String(e)}`)
+      toast.error('Failed to queue. Please try again.')
     } finally {
       setQueuingPlatform(null)
     }

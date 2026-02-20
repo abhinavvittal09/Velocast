@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
       : VIDEO_PLATFORMS
 
     // ── Avoid re-queuing platforms already being processed ─
-    const { data: processingJobs } = await admin
+    // Use the user's supabase client (RLS SELECT policy exists)
+    const { data: processingJobs } = await supabase
       .from('transform_jobs')
       .select('platform')
       .eq('content_item_id', contentItemId)
@@ -52,20 +53,19 @@ export async function POST(request: NextRequest) {
 
     const processingSet = new Set((processingJobs ?? []).map((j) => j.platform))
 
-    // Delete existing non-processing jobs only for the target platforms so we
-    // don't accidentally wipe jobs for other platforms the user didn't request.
     const platformsToQueue = targetPlatforms.filter((p) => !processingSet.has(p))
+
     if (platformsToQueue.length > 0) {
-      await admin
+      // Delete existing non-processing jobs for these platforms (RLS DELETE policy exists)
+      await supabase
         .from('transform_jobs')
         .delete()
         .eq('content_item_id', contentItemId)
         .in('platform', platformsToQueue)
         .neq('status', 'processing')
-    }
 
-    if (platformsToQueue.length > 0) {
-      const { error: insertError } = await admin.from('transform_jobs').insert(
+      // Insert new pending jobs (RLS INSERT policy exists)
+      const { error: insertError } = await supabase.from('transform_jobs').insert(
         platformsToQueue.map((platform) => ({
           user_id: user.id,
           content_item_id: contentItemId,
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       )
 
       if (insertError) {
-        console.error('Job enqueue error:', insertError)
+        console.error('[transform/video] insert error:', insertError.message)
         return NextResponse.json({ error: 'Failed to queue jobs' }, { status: 500 })
       }
 
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       platforms: platformsToQueue,
     })
   } catch (err) {
-    console.error('Video enqueue error:', err)
+    console.error('[transform/video] unhandled error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

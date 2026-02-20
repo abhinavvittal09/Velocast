@@ -13,15 +13,12 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
-      console.error('[transform/image] Auth failed:', authError?.message)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
     const contentItemId: string = body.contentItemId
     const requestedPlatforms: Platform[] | undefined = body.platforms
-
-    console.log('[transform/image] user:', user.id, 'item:', contentItemId, 'platforms:', requestedPlatforms)
 
     if (!contentItemId) {
       return NextResponse.json({ error: 'contentItemId is required' }, { status: 400 })
@@ -38,7 +35,6 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (itemError || !item || item.type !== 'image') {
-      console.error('[transform/image] Item lookup failed:', { itemError: itemError?.message, item, type: item?.type })
       return NextResponse.json({ error: 'Image content item not found' }, { status: 404 })
     }
 
@@ -46,38 +42,30 @@ export async function POST(request: NextRequest) {
       ? requestedPlatforms.filter((p) => PLATFORM_SPECS[p]?.image)
       : IMAGE_PLATFORMS
 
-    console.log('[transform/image] targetPlatforms:', targetPlatforms)
-
     // ── Avoid re-queuing platforms already being processed ─
-    const { data: processingJobs, error: processingErr } = await admin
+    // Use the user's supabase client (RLS SELECT policy exists)
+    const { data: processingJobs } = await supabase
       .from('transform_jobs')
       .select('platform')
       .eq('content_item_id', contentItemId)
       .in('platform', targetPlatforms)
       .eq('status', 'processing')
 
-    if (processingErr) console.error('[transform/image] processingJobs query error:', processingErr.message)
-
     const processingSet = new Set((processingJobs ?? []).map((j) => j.platform))
 
-    // Delete existing non-processing jobs only for the target platforms so we
-    // don't accidentally wipe jobs for other platforms the user didn't request.
     const platformsToQueue = targetPlatforms.filter((p) => !processingSet.has(p))
-    console.log('[transform/image] platformsToQueue:', platformsToQueue)
 
     if (platformsToQueue.length > 0) {
-      const { error: deleteErr } = await admin
+      // Delete existing non-processing jobs for these platforms (RLS DELETE policy exists)
+      await supabase
         .from('transform_jobs')
         .delete()
         .eq('content_item_id', contentItemId)
         .in('platform', platformsToQueue)
         .neq('status', 'processing')
 
-      if (deleteErr) console.error('[transform/image] delete error:', deleteErr.message)
-    }
-
-    if (platformsToQueue.length > 0) {
-      const { error: insertError } = await admin.from('transform_jobs').insert(
+      // Insert new pending jobs (RLS INSERT policy exists)
+      const { error: insertError } = await supabase.from('transform_jobs').insert(
         platformsToQueue.map((platform) => ({
           user_id: user.id,
           content_item_id: contentItemId,
@@ -87,9 +75,8 @@ export async function POST(request: NextRequest) {
       )
 
       if (insertError) {
-        console.error('[transform/image] insert error:', insertError.message, insertError.details, insertError.hint)
-        // Return full detail so the toast can reveal the exact DB error during debugging
-        return NextResponse.json({ error: `DB insert failed: ${insertError.message}` }, { status: 500 })
+        console.error('[transform/image] insert error:', insertError.message)
+        return NextResponse.json({ error: 'Failed to queue jobs' }, { status: 500 })
       }
 
       // Trigger the processor immediately. The non-awaited fetch keeps the
@@ -104,7 +91,6 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    console.log('[transform/image] success, queued:', platformsToQueue.length)
     return NextResponse.json({
       queued: platformsToQueue.length,
       skipped: processingSet.size,
