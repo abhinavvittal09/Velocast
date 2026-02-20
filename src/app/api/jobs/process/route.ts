@@ -189,9 +189,12 @@ async function processJob(
     }
 
     // ── Upload to processed bucket ────────────────────────────────────────────
+    // Convert Buffer → Blob: Node 18+ native fetch handles Blob more reliably
+    // than Buffer for multipart storage uploads in the Supabase JS v2 client.
+    const uploadBlob = new Blob([new Uint8Array(variantBuffer)], { type: contentType })
     const { error: uploadError } = await admin.storage
       .from('processed')
-      .upload(storagePath, variantBuffer, { contentType, upsert: true })
+      .upload(storagePath, uploadBlob, { contentType, upsert: true })
 
     if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`)
 
