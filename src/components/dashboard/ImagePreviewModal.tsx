@@ -45,7 +45,8 @@ export default function ImagePreviewModal({
       const blob = await response.blob()
       const objectUrl = URL.createObjectURL(blob)
       const sanitizedPlatform = platform.replace(/[^a-zA-Z0-9_-]/g, '_')
-      const filename = `velocast_${sanitizedPlatform}_${width}x${height}.jpg`
+      const ext = imageUrl.split('.').pop()?.split('?')[0] ?? 'jpg'
+      const filename = `velocast_${sanitizedPlatform}_${width}x${height}.${ext}`
       const a = document.createElement('a')
       a.href = objectUrl
       a.download = filename
