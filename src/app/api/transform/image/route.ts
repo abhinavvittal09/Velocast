@@ -88,7 +88,8 @@ export async function POST(request: NextRequest) {
 
       if (insertError) {
         console.error('[transform/image] insert error:', insertError.message, insertError.details, insertError.hint)
-        return NextResponse.json({ error: 'Failed to queue jobs', detail: insertError.message }, { status: 500 })
+        // Return full detail so the toast can reveal the exact DB error during debugging
+        return NextResponse.json({ error: `DB insert failed: ${insertError.message}` }, { status: 500 })
       }
 
       // Trigger the processor immediately. The non-awaited fetch keeps the
