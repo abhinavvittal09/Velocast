@@ -24,7 +24,6 @@ import {
   Copy,
   Check,
   Archive,
-  X,
   Crop,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -399,25 +398,23 @@ export default function TransformClient({
           )}
         </div>
 
-        {/* Right: platform filter + variant grid */}
-        <div className="space-y-4">
-          {/* Platform filter / generate section */}
+        {/* Right: platform status + generated variants gallery */}
+        <div className="space-y-6">
+          {/* ── Platform select & generate ──────────────────────────── */}
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-white/70">Select platforms to generate</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleGenerate}
-                  disabled={isQueuing || selectedPlatforms.length === 0}
-                  className="btn-primary"
-                >
-                  {isQueuing ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Queuing…</>
-                  ) : (
-                    <><Zap className="w-4 h-4" /> Generate{selectedPlatforms.length > 0 ? ` (${selectedPlatforms.length})` : ''}</>
-                  )}
-                </button>
-              </div>
+              <button
+                onClick={handleGenerate}
+                disabled={isQueuing || selectedPlatforms.length === 0}
+                className="btn-primary"
+              >
+                {isQueuing ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Queuing…</>
+                ) : (
+                  <><Zap className="w-4 h-4" /> Generate{selectedPlatforms.length > 0 ? ` (${selectedPlatforms.length})` : ''}</>
+                )}
+              </button>
             </div>
             <PlatformSelector
               platforms={targetPlatforms}
@@ -426,147 +423,153 @@ export default function TransformClient({
             />
           </div>
 
-          {/* Platform variant grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-            {targetPlatforms.map((platform) => {
-              const spec = PLATFORM_SPECS[platform]
-              const variant = variantMap.get(platform)
-              const job = jobMap.get(platform)
-              const Logo = PLATFORM_LOGOS[platform]
-              const dims = item.type === 'image' ? spec.image : spec.video
+          {/* ── Platform status list ─────────────────────────────────── */}
+          <div className="card">
+            <p className="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">Platform Status</p>
+            <div className="space-y-1">
+              {targetPlatforms.map((platform) => {
+                const spec    = PLATFORM_SPECS[platform]
+                const variant = variantMap.get(platform)
+                const job     = jobMap.get(platform)
+                const Logo    = PLATFORM_LOGOS[platform]
+                const isPending    = job?.status === 'pending'
+                const isProcessing = job?.status === 'processing'
+                const isFailed     = job?.status === 'failed' && !variant
+                const isDone       = !!variant
 
-              // Determine card state
-              const isProcessing = job?.status === 'processing'
-              const isPending = job?.status === 'pending'
-              const isFailed = job?.status === 'failed' && !variant
-
-              return (
-                <div
-                  key={platform}
-                  className={cn(
-                    'card p-0 overflow-hidden flex flex-col transition-all duration-300',
-                    variant && 'border-emerald-800/40',
-                    isFailed && 'border-rose-800/40',
-                    (isProcessing || isPending) && 'border-brand-800/40'
-                  )}
-                >
-                  {/* Card header */}
-                  <div className="flex items-center gap-2 px-3 py-2.5 border-b border-surface-border">
-                    {Logo && <Logo className="w-4 h-4 flex-shrink-0" />}
-                    <span className="text-xs font-medium truncate flex-1">{spec.label}</span>
-                    {variant ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                return (
+                  <div key={platform} className={cn(
+                    'flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors',
+                    isDone       && 'bg-emerald-950/30',
+                    isFailed     && 'bg-rose-950/20',
+                    (isPending || isProcessing) && 'bg-brand-950/30',
+                  )}>
+                    {Logo && <Logo className="w-4 h-4 flex-shrink-0 text-white/50" />}
+                    <span className="text-sm flex-1 truncate">{spec.label}</span>
+                    {isDone ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                     ) : isProcessing ? (
-                      <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin flex-shrink-0" />
+                      <Loader2 className="w-4 h-4 text-brand-400 animate-spin flex-shrink-0" />
                     ) : isPending ? (
-                      <Clock className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+                      <Clock className="w-4 h-4 text-white/30 flex-shrink-0" />
                     ) : isFailed ? (
-                      <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
-                    )}
-                  </div>
-
-                  {/* Preview area — clickable when variant exists */}
-                  <div
-                    className={cn(
-                      'aspect-square bg-surface relative overflow-hidden flex items-center justify-center',
-                      variant && 'cursor-pointer'
-                    )}
-                    onClick={() => {
-                      if (variant) setPreviewVariant(variant)
-                    }}
-                  >
-                    {variant ? (
-                      item.type === 'video' ? (
-                        <video src={variant.variant_url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={variant.variant_url} alt={spec.label} className="w-full h-full object-cover" />
-                      )
-                    ) : (
-                      <div className="flex flex-col items-center justify-center gap-2 w-full h-full">
-                        {Logo && <Logo className="w-10 h-10 opacity-10" />}
-                        <span className={cn(
-                          'text-[11px] text-center px-2',
-                          isProcessing && 'text-brand-400/60 animate-pulse',
-                          isPending && 'text-white/30',
-                          isFailed && 'text-rose-400/60',
-                          !job && 'text-white/20'
-                        )}>
-                          {isProcessing ? 'Converting…' : isPending ? 'In queue…' : isFailed ? 'Failed' : 'Not generated yet'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card footer */}
-                  <div className="px-3 py-2.5 space-y-1.5">
-                    <p className="text-[10px] text-white/40">
-                      {dims ? `${dims.width} × ${dims.height} · ${dims.ratio}` : '—'}
-                    </p>
-                    {variant ? (
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] text-white/30">
-                          {(variant.file_size / 1024 / 1024).toFixed(1)} MB
-                        </span>
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => handleDownload(variant)}
-                            disabled={downloadingPlatform === variant.platform}
-                            className="flex-1 flex items-center justify-center gap-1 text-[10px] bg-brand-600/20 hover:bg-brand-600/40 text-brand-400 hover:text-brand-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
-                          >
-                            {downloadingPlatform === variant.platform
-                              ? <Loader2 className="w-3 h-3 animate-spin" />
-                              : <Download className="w-3 h-3" />}
-                            Save
-                          </button>
-                          <button
-                            onClick={() => handleCopyLink(variant)}
-                            className="flex items-center justify-center gap-1 text-[10px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded px-1.5 py-1 transition-colors"
-                            title="Copy public link"
-                          >
-                            {copiedPlatform === variant.platform
-                              ? <Check className="w-3 h-3 text-emerald-400" />
-                              : <Copy className="w-3 h-3" />}
-                          </button>
-                          {item.type === 'image' && (
-                            <button
-                              onClick={() => setCropTarget({ platform, variant })}
-                              className="flex items-center justify-center gap-1 text-[10px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded px-1.5 py-1 transition-colors"
-                              title="Edit crop"
-                            >
-                              <Crop className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : isFailed ? (
-                      <div className="space-y-1.5">
-                        {job?.error_message && (
-                          <p className="text-[10px] text-rose-400/70 truncate" title={job.error_message}>
-                            {job.error_message}
-                          </p>
-                        )}
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
                         <button
                           onClick={() => handleDismissFailedJob(platform)}
-                          className="w-full flex items-center justify-center gap-1 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400/70 hover:text-rose-400 rounded px-1.5 py-1 transition-colors"
-                          title="Dismiss error"
+                          className="text-[10px] text-rose-400/70 hover:text-rose-400 underline"
                         >
-                          <X className="w-3 h-3" />
                           Dismiss
                         </button>
                       </div>
-                    ) : isPending || isProcessing ? (
-                      <span className="text-[10px] text-white/20">—</span>
                     ) : (
-                      <p className="text-[10px] text-white/20">Select above to generate</p>
+                      <span className="text-xs text-white/20">—</span>
                     )}
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
+
+          {/* ── Generated Variants gallery ───────────────────────────── */}
+          {variantMap.size > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-sm font-semibold text-white">Generated Variants</h3>
+                <span className="text-xs bg-brand-500/20 text-brand-400 px-2 py-0.5 rounded-full">
+                  {variantMap.size}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {targetPlatforms
+                  .map((p) => variantMap.get(p))
+                  .filter((v): v is ContentVariant => !!v)
+                  .map((variant) => {
+                    const spec     = PLATFORM_SPECS[variant.platform as Platform]
+                    const dims     = item.type === 'image' ? spec?.image : spec?.video
+                    const aspectRatio = dims ? `${dims.width} / ${dims.height}` : '1 / 1'
+
+                    return (
+                      <div key={variant.platform} className="card p-0 overflow-hidden group">
+                        {/* Clickable thumbnail */}
+                        <button
+                          className="w-full relative overflow-hidden bg-black"
+                          style={{ aspectRatio }}
+                          onClick={() => setPreviewVariant(variant)}
+                          aria-label={`Preview ${spec?.label}`}
+                        >
+                          {item.type === 'video' ? (
+                            <video
+                              src={variant.variant_url}
+                              className="w-full h-full object-cover"
+                              muted
+                              loop
+                              autoPlay
+                              playsInline
+                            />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={variant.variant_url}
+                              alt={spec?.label ?? ''}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                          )}
+                          {/* Hover overlay */}
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-medium bg-black/60 px-2 py-1 rounded">
+                              Preview
+                            </span>
+                          </div>
+                        </button>
+
+                        {/* Info + actions */}
+                        <div className="p-3 space-y-2">
+                          <div>
+                            <p className="text-xs font-medium text-white truncate">{spec?.label}</p>
+                            {dims && (
+                              <p className="text-[10px] text-white/40">
+                                {dims.width} × {dims.height} · {dims.ratio} · {(variant.file_size / 1024 / 1024).toFixed(1)} MB
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => handleDownload(variant)}
+                              disabled={downloadingPlatform === variant.platform}
+                              className="flex-1 flex items-center justify-center gap-1 text-[11px] bg-brand-600/20 hover:bg-brand-600/40 text-brand-400 hover:text-brand-300 rounded-md px-2 py-1.5 transition-colors disabled:opacity-50"
+                            >
+                              {downloadingPlatform === variant.platform
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <Download className="w-3 h-3" />}
+                              Save
+                            </button>
+                            <button
+                              onClick={() => handleCopyLink(variant)}
+                              className="flex items-center justify-center gap-1 text-[11px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded-md px-2 py-1.5 transition-colors"
+                              title="Copy link"
+                            >
+                              {copiedPlatform === variant.platform
+                                ? <Check className="w-3 h-3 text-emerald-400" />
+                                : <Copy className="w-3 h-3" />}
+                            </button>
+                            {item.type === 'image' && (
+                              <button
+                                onClick={() => setCropTarget({ platform: variant.platform as Platform, variant })}
+                                className="flex items-center justify-center gap-1 text-[11px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded-md px-2 py-1.5 transition-colors"
+                                title="Edit"
+                              >
+                                <Crop className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

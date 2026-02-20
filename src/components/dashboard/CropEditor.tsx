@@ -2,8 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import {
-  X, Loader2, ZoomIn, ZoomOut, RotateCcw, RotateCw,
-  FlipHorizontal, RefreshCw, Move,
+  X, Loader2, RotateCcw, RotateCw,
+  FlipHorizontal2, FlipVertical2, RefreshCw, Move,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -20,19 +20,27 @@ interface CropEditorProps {
 }
 
 interface TransformState {
-  zoom: number       // 0.25–5
-  rotation: number   // 0, 90, 180, 270
-  invert: boolean
-  panX: number       // pixels from center on the PREVIEW canvas
+  zoom: number        // 0.25–5.0
+  rotation: number    // 0, 90, 180, 270
+  flipH: boolean      // mirror left-right
+  flipV: boolean      // mirror top-bottom
+  panX: number        // pixels from center
   panY: number
+  brightness: number  // 0–200 (100 = normal)
+  contrast: number    // 0–200 (100 = normal)
+  saturation: number  // 0–200 (100 = normal)
 }
 
 const DEFAULT_STATE: TransformState = {
   zoom: 1,
   rotation: 0,
-  invert: false,
+  flipH: false,
+  flipV: false,
   panX: 0,
   panY: 0,
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
 }
 
 function drawFrame(
@@ -42,24 +50,26 @@ function drawFrame(
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
-  const { zoom, rotation, panX, panY, invert } = state
+  const { zoom, rotation, flipH, flipV, panX, panY, brightness, contrast, saturation } = state
   const cw = canvas.width
   const ch = canvas.height
   const rotRad = (rotation * Math.PI) / 180
 
-  // When rotated 90/270 the effective image dims swap
+  // Effective dimensions after rotation (90/270 swaps width/height)
   const isTransposed = rotation === 90 || rotation === 270
   const effW = isTransposed ? img.naturalHeight : img.naturalWidth
   const effH = isTransposed ? img.naturalWidth : img.naturalHeight
 
   ctx.clearRect(0, 0, cw, ch)
 
-  // ── 1. Blurred background (scale to cover + a little extra so blur edges don't show) ──
+  // ── 1. Blurred background (always fills frame) ──────────────────
   ctx.save()
   ctx.filter = 'blur(24px)'
   const bgScale = Math.max(cw / effW, ch / effH) * 1.15
   ctx.translate(cw / 2, ch / 2)
   ctx.rotate(rotRad)
+  if (flipH) ctx.scale(-1, 1)
+  if (flipV) ctx.scale(1, -1)
   ctx.drawImage(
     img,
     (-img.naturalWidth / 2) * bgScale,
@@ -69,16 +79,25 @@ function drawFrame(
   )
   ctx.restore()
 
-  // Darken the blur layer slightly so main image pops
-  ctx.fillStyle = 'rgba(0,0,0,0.25)'
+  // Darken slightly
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'
   ctx.fillRect(0, 0, cw, ch)
 
-  // ── 2. Main image (fit-contain × zoom, panned) ──
+  // ── 2. Main image with all transforms + adjustments ─────────────
   ctx.save()
-  if (invert) ctx.filter = 'invert(1)'
+
+  // Build CSS filter string for brightness/contrast/saturation
+  const filterParts: string[] = []
+  if (brightness !== 100) filterParts.push(`brightness(${brightness}%)`)
+  if (contrast !== 100) filterParts.push(`contrast(${contrast}%)`)
+  if (saturation !== 100) filterParts.push(`saturate(${saturation}%)`)
+  if (filterParts.length > 0) ctx.filter = filterParts.join(' ')
+
   const fitScale = Math.min(cw / effW, ch / effH) * zoom
   ctx.translate(cw / 2 + panX, ch / 2 + panY)
   ctx.rotate(rotRad)
+  if (flipH) ctx.scale(-1, 1)
+  if (flipV) ctx.scale(1, -1)
   ctx.drawImage(
     img,
     (-img.naturalWidth / 2) * fitScale,
@@ -121,7 +140,7 @@ export default function CropEditor({
     startZoom: 1,
   })
 
-  // ── Load image when modal opens ────────────────────────────────────────────
+  // ── Load image when modal opens ─────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
     setTransform(DEFAULT_STATE)
@@ -138,7 +157,7 @@ export default function CropEditor({
     img.src = originalUrl
   }, [isOpen, originalUrl])
 
-  // ── Re-draw canvas whenever transform or imgLoaded changes ─────────────────
+  // ── Re-draw canvas whenever transform or imgLoaded changes ──────────────────
   useEffect(() => {
     const canvas = canvasRef.current
     const img = imgRef.current
@@ -146,7 +165,7 @@ export default function CropEditor({
     drawFrame(canvas, img, transform)
   }, [transform, imgLoaded])
 
-  // ── Escape key ──────────────────────────────────────────────────────────────
+  // ── Escape key ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
     function onKey(e: KeyboardEvent) {
@@ -156,27 +175,24 @@ export default function CropEditor({
     return () => document.removeEventListener('keydown', onKey)
   }, [isOpen, onClose])
 
-  // ── Toolbar actions ─────────────────────────────────────────────────────────
+  // ── Toolbar actions ──────────────────────────────────────────────────────────
   function rotateCW() {
     setTransform((s) => ({ ...s, rotation: (s.rotation + 90) % 360, panX: 0, panY: 0 }))
   }
   function rotateCCW() {
     setTransform((s) => ({ ...s, rotation: (s.rotation - 90 + 360) % 360, panX: 0, panY: 0 }))
   }
-  function zoomIn() {
-    setTransform((s) => ({ ...s, zoom: Math.min(5, parseFloat((s.zoom + 0.25).toFixed(2))) }))
+  function flipHorizontal() {
+    setTransform((s) => ({ ...s, flipH: !s.flipH }))
   }
-  function zoomOut() {
-    setTransform((s) => ({ ...s, zoom: Math.max(0.25, parseFloat((s.zoom - 0.25).toFixed(2))) }))
-  }
-  function toggleInvert() {
-    setTransform((s) => ({ ...s, invert: !s.invert }))
+  function flipVertical() {
+    setTransform((s) => ({ ...s, flipV: !s.flipV }))
   }
   function resetTransform() {
     setTransform(DEFAULT_STATE)
   }
 
-  // ── Mouse wheel zoom ────────────────────────────────────────────────────────
+  // ── Mouse wheel zoom ─────────────────────────────────────────────────────────
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
     const factor = e.deltaY < 0 ? 1.1 : 0.9
@@ -186,7 +202,7 @@ export default function CropEditor({
     }))
   }, [])
 
-  // ── Mouse drag ──────────────────────────────────────────────────────────────
+  // ── Mouse drag ───────────────────────────────────────────────────────────────
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     pointerState.current.dragging = true
@@ -211,7 +227,7 @@ export default function CropEditor({
     pointerState.current.dragging = false
   }, [])
 
-  // ── Touch: single-finger drag + two-finger pinch ───────────────────────────
+  // ── Touch: single-finger drag + two-finger pinch ────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 1) {
       const t = e.touches[0]
@@ -257,7 +273,7 @@ export default function CropEditor({
     pointerState.current.pinching = false
   }, [])
 
-  // ── Apply: render at target resolution and upload ──────────────────────────
+  // ── Apply: render at target resolution and upload ───────────────────────────
   const handleApply = useCallback(async () => {
     const img = imgRef.current
     if (!img) return
@@ -333,7 +349,7 @@ export default function CropEditor({
       />
 
       {/* Modal card */}
-      <div className="relative z-10 flex flex-col bg-surface-card border border-surface-border rounded-xl shadow-2xl w-full max-w-[560px] overflow-hidden">
+      <div className="relative z-10 flex flex-col bg-surface-card border border-surface-border rounded-xl shadow-2xl w-full max-w-[600px] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between gap-4 px-5 py-3.5 border-b border-surface-border flex-shrink-0">
           <p className="text-sm font-semibold text-white">
@@ -352,30 +368,23 @@ export default function CropEditor({
         <div className="flex items-center justify-center gap-1 px-4 py-2 border-b border-surface-border bg-surface-card/50 flex-wrap">
           {/* Rotate */}
           <ToolbarGroup label="Rotate">
-            <ToolBtn onClick={rotateCCW} title="Rotate counter-clockwise"><RotateCcw className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn onClick={rotateCW}  title="Rotate clockwise"><RotateCw  className="w-3.5 h-3.5" /></ToolBtn>
+            <ToolBtn onClick={rotateCCW} title="Rotate CCW"><RotateCcw className="w-3.5 h-3.5" /></ToolBtn>
+            <ToolBtn onClick={rotateCW}  title="Rotate CW"><RotateCw  className="w-3.5 h-3.5" /></ToolBtn>
           </ToolbarGroup>
 
           <div className="w-px h-5 bg-surface-border/60 mx-1" />
 
-          {/* Zoom */}
-          <ToolbarGroup label="Zoom">
-            <ToolBtn onClick={zoomOut} title="Zoom out"><ZoomOut className="w-3.5 h-3.5" /></ToolBtn>
-            <span className="text-xs text-white/50 w-10 text-center tabular-nums">{transform.zoom.toFixed(2)}×</span>
-            <ToolBtn onClick={zoomIn} title="Zoom in"><ZoomIn className="w-3.5 h-3.5" /></ToolBtn>
+          {/* Flip */}
+          <ToolbarGroup label="Flip">
+            <ToolBtn onClick={flipHorizontal} title="Flip horizontal" active={transform.flipH}>
+              <FlipHorizontal2 className="w-3.5 h-3.5" />
+              <span className="text-[10px] ml-0.5">H</span>
+            </ToolBtn>
+            <ToolBtn onClick={flipVertical} title="Flip vertical" active={transform.flipV}>
+              <FlipVertical2 className="w-3.5 h-3.5" />
+              <span className="text-[10px] ml-0.5">V</span>
+            </ToolBtn>
           </ToolbarGroup>
-
-          <div className="w-px h-5 bg-surface-border/60 mx-1" />
-
-          {/* Invert */}
-          <ToolBtn
-            onClick={toggleInvert}
-            title="Invert colours"
-            active={transform.invert}
-          >
-            <FlipHorizontal className="w-3.5 h-3.5" />
-            <span className="text-[10px] ml-0.5">Invert</span>
-          </ToolBtn>
 
           <div className="w-px h-5 bg-surface-border/60 mx-1" />
 
@@ -389,7 +398,7 @@ export default function CropEditor({
         {/* Canvas preview */}
         <div className="flex flex-col items-center gap-2 px-5 pt-4">
           <div
-            style={{ aspectRatio, maxWidth: '500px', maxHeight: '65vh', width: '100%' }}
+            style={{ aspectRatio, maxWidth: '540px', maxHeight: '55vh', width: '100%' }}
             className="relative rounded-lg overflow-hidden border border-surface-border ring-1 ring-brand-500/20 select-none"
           >
             <canvas
@@ -428,6 +437,40 @@ export default function CropEditor({
           {error && <p className="text-xs text-rose-400 text-center">{error}</p>}
         </div>
 
+        {/* Adjustments panel */}
+        <div className="px-5 pt-3 pb-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <AdjustSlider
+              label="Zoom"
+              value={Math.round(transform.zoom * 100)}
+              min={25}
+              max={500}
+              onChange={(v) => setTransform((s) => ({ ...s, zoom: v / 100 }))}
+            />
+            <AdjustSlider
+              label="Brightness"
+              value={transform.brightness}
+              min={0}
+              max={200}
+              onChange={(v) => setTransform((s) => ({ ...s, brightness: v }))}
+            />
+            <AdjustSlider
+              label="Contrast"
+              value={transform.contrast}
+              min={0}
+              max={200}
+              onChange={(v) => setTransform((s) => ({ ...s, contrast: v }))}
+            />
+            <AdjustSlider
+              label="Saturation"
+              value={transform.saturation}
+              min={0}
+              max={200}
+              onChange={(v) => setTransform((s) => ({ ...s, saturation: v }))}
+            />
+          </div>
+        </div>
+
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-4 mt-2">
           <button type="button" onClick={onClose} className="btn-secondary" disabled={isSaving}>
@@ -449,7 +492,7 @@ export default function CropEditor({
   )
 }
 
-// ── Tiny toolbar components ──────────────────────────────────────────────────
+// ── Tiny toolbar components ───────────────────────────────────────────────────
 
 function ToolbarGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -478,5 +521,41 @@ function ToolBtn({
     >
       {children}
     </button>
+  )
+}
+
+function AdjustSlider({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+  unit = '%',
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (v: number) => void
+  unit?: string
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-white/40 uppercase tracking-wider">{label}</span>
+        <span className="text-[11px] text-white/60 tabular-nums font-mono">{value}{unit}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-1.5 rounded-full accent-brand-500 cursor-pointer"
+        style={{
+          background: `linear-gradient(to right, rgb(99 102 241) ${((value - min) / (max - min)) * 100}%, rgb(55 65 81) ${((value - min) / (max - min)) * 100}%)`,
+        }}
+      />
+    </div>
   )
 }
