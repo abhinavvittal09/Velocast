@@ -1,9 +1,9 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { PLATFORM_SPECS, ALL_PLATFORMS, type Platform } from '@/lib/constants/platforms'
-import { waitUntil } from '@vercel/functions'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 const IMAGE_PLATFORMS = ALL_PLATFORMS.filter((p) => PLATFORM_SPECS[p].image != null)
 
@@ -79,13 +79,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to queue jobs' }, { status: 500 })
       }
 
-      // Trigger the job processor immediately so jobs don't wait for the daily cron.
-      // waitUntil keeps the function alive after the response is sent.
+      // Trigger the processor immediately. The non-awaited fetch keeps the
+      // Node.js event loop alive after the response is sent, so it completes
+      // in the background without blocking the client.
       const processorUrl = new URL('/api/jobs/process', request.url).toString()
       const authHeaders: HeadersInit = process.env.CRON_SECRET
         ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
         : {}
-      waitUntil(fetch(processorUrl, { headers: authHeaders }))
+      fetch(processorUrl, { headers: authHeaders }).catch(() => {})
     }
 
     return NextResponse.json({
