@@ -24,10 +24,15 @@ import {
   Copy,
   Check,
   Archive,
+  X,
+  Crop,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
 import { formatDistanceToNow } from 'date-fns'
+import ImagePreviewModal from '@/components/dashboard/ImagePreviewModal'
+import PlatformSelector from '@/components/dashboard/PlatformSelector'
+import CropEditor from '@/components/dashboard/CropEditor'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface ContentVariant {
@@ -93,16 +98,24 @@ export default function TransformClient({
     new Map(initialVariants.map((v) => [v.platform, v]))
   )
   const [jobMap, setJobMap] = useState<Map<string, TransformJob>>(
-    new Map(initialJobs.map((j) => [j.platform, j]))
+    () => {
+      // On initial load, exclude failed jobs so they don't show error state on refresh
+      const filtered = initialJobs.filter((j) => j.status !== 'failed')
+      return new Map(filtered.map((j) => [j.platform, j]))
+    }
   )
   const [isQueuing, setIsQueuing] = useState(false)
-  const [queuingPlatform, setQueuingPlatform] = useState<string | null>(null)
   const [downloadingPlatform, setDownloadingPlatform] = useState<string | null>(null)
   const [copiedPlatform, setCopiedPlatform] = useState<string | null>(null)
   const [isZipping, setIsZipping] = useState(false)
+  const [previewVariant, setPreviewVariant] = useState<ContentVariant | null>(null)
+  const [cropTarget, setCropTarget] = useState<{ platform: Platform; variant: ContentVariant } | null>(null)
 
   const supabase = useMemo(() => createClient(), [])
   const targetPlatforms = item.type === 'image' ? IMAGE_PLATFORMS : VIDEO_PLATFORMS
+
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(targetPlatforms)
+
   const doneCount = targetPlatforms.filter((p) => variantMap.has(p)).length
   const activeJobCount = targetPlatforms.filter((p) => {
     const job = jobMap.get(p)
@@ -162,35 +175,24 @@ export default function TransformClient({
     return () => { supabase.removeChannel(jobChannel) }
   }, [item.id, supabase])
 
-  // ── Get signed URL from API ───────────────────────────────────────────────
-  async function getSignedUrl(variant: ContentVariant): Promise<{ signedUrl: string; filename: string } | null> {
-    const res = await fetch('/api/download/signed-url', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        storagePath: variant.storage_path,
-        platform: variant.platform,
-        width: variant.width,
-        height: variant.height,
-        title: item.title ?? undefined,
-      }),
-    })
-    if (!res.ok) return null
-    return res.json()
-  }
-
-  // ── Single file download ──────────────────────────────────────────────────
+  // ── Single file download (direct fetch — processed bucket is public) ──────
   async function handleDownload(variant: ContentVariant) {
     setDownloadingPlatform(variant.platform)
     try {
-      const result = await getSignedUrl(variant)
-      if (!result) { toast.error('Failed to generate download link'); return }
+      const res = await fetch(variant.variant_url)
+      const blob = await res.blob()
+      const ext = variant.variant_url.split('.').pop()?.split('?')[0] ?? 'jpg'
+      const platformLabel = PLATFORM_SPECS[variant.platform as Platform]?.label
+        .toLowerCase().replace(/[\s/]+/g, '_') ?? variant.platform
+      const filename = `velocast_${platformLabel}_${variant.width}x${variant.height}.${ext}`
+      const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = result.signedUrl
-      a.download = result.filename
+      a.href = url
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
+      URL.revokeObjectURL(url)
     } catch {
       toast.error('Download failed')
     } finally {
@@ -198,14 +200,12 @@ export default function TransformClient({
     }
   }
 
-  // ── Copy shareable link ───────────────────────────────────────────────────
+  // ── Copy public URL ───────────────────────────────────────────────────────
   async function handleCopyLink(variant: ContentVariant) {
     try {
-      const result = await getSignedUrl(variant)
-      if (!result) { toast.error('Failed to generate link'); return }
-      await navigator.clipboard.writeText(result.signedUrl)
+      await navigator.clipboard.writeText(variant.variant_url)
       setCopiedPlatform(variant.platform)
-      toast.success('Link copied — valid for 1 hour')
+      toast.success('Link copied!')
       setTimeout(() => setCopiedPlatform(null), 2000)
     } catch {
       toast.error('Failed to copy link')
@@ -225,10 +225,13 @@ export default function TransformClient({
 
       await Promise.all(
         readyVariants.map(async (variant) => {
-          const result = await getSignedUrl(variant)
-          if (!result) return
-          const blob = await fetch(result.signedUrl).then((r) => r.blob())
-          zip.file(result.filename, blob)
+          const res = await fetch(variant.variant_url)
+          const blob = await res.blob()
+          const ext = variant.variant_url.split('.').pop()?.split('?')[0] ?? 'jpg'
+          const platformLabel = PLATFORM_SPECS[variant.platform as Platform]?.label
+            .toLowerCase().replace(/[\s/]+/g, '_') ?? variant.platform
+          const filename = `velocast_${platformLabel}_${variant.width}x${variant.height}.${ext}`
+          zip.file(filename, blob)
         })
       )
 
@@ -249,22 +252,29 @@ export default function TransformClient({
     }
   }
 
-  // ── Queue all platforms ───────────────────────────────────────────────────
+  // ── Queue selected platforms ──────────────────────────────────────────────
   async function handleGenerate() {
+    if (selectedPlatforms.length === 0) return
     setIsQueuing(true)
+    // Optimistically clear failed state for selected platforms
+    setJobMap(prev => {
+      const next = new Map(prev)
+      selectedPlatforms.forEach(p => {
+        const j = next.get(p)
+        if (j?.status === 'failed') next.delete(p)
+      })
+      return next
+    })
     try {
       const endpoint = item.type === 'image' ? '/api/transform/image' : '/api/transform/video'
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentItemId: item.id }),
+        body: JSON.stringify({ contentItemId: item.id, platforms: selectedPlatforms }),
       })
-
       if (res.ok) {
         const result = await res.json()
-        toast.success(
-          `Queued ${result.queued} platform${result.queued !== 1 ? 's' : ''} — processing will start shortly`
-        )
+        toast.success(`Queued ${result.queued} platform${result.queued !== 1 ? 's' : ''} — processing shortly`)
       } else {
         toast.error('Failed to queue jobs. Please try again.')
       }
@@ -275,26 +285,13 @@ export default function TransformClient({
     }
   }
 
-  // ── Queue a single platform ───────────────────────────────────────────────
-  async function handleGeneratePlatform(platform: Platform) {
-    setQueuingPlatform(platform)
-    try {
-      const endpoint = item.type === 'image' ? '/api/transform/image' : '/api/transform/video'
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentItemId: item.id, platforms: [platform] }),
-      })
-      if (res.ok) {
-        toast.success(`${PLATFORM_SPECS[platform].label} queued — processing shortly`)
-      } else {
-        toast.error('Failed to queue. Please try again.')
-      }
-    } catch (e) {
-      toast.error('Failed to queue. Please try again.')
-    } finally {
-      setQueuingPlatform(null)
-    }
+  // ── Dismiss a failed job from local state ─────────────────────────────────
+  function handleDismissFailedJob(platform: string) {
+    setJobMap(prev => {
+      const next = new Map(prev)
+      next.delete(platform)
+      return next
+    })
   }
 
   return (
@@ -325,13 +322,6 @@ export default function TransformClient({
               )}
             </button>
           )}
-          <button onClick={handleGenerate} disabled={isQueuing} className="btn-primary">
-            {isQueuing ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Queuing…</>
-            ) : (
-              <><Zap className="w-4 h-4" /> Generate All</>
-            )}
-          </button>
         </div>
       </div>
 
@@ -409,140 +399,204 @@ export default function TransformClient({
           )}
         </div>
 
-        {/* Right: platform variant grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-          {targetPlatforms.map((platform) => {
-            const spec = PLATFORM_SPECS[platform]
-            const variant = variantMap.get(platform)
-            const job = jobMap.get(platform)
-            const Logo = PLATFORM_LOGOS[platform]
-            const dims = item.type === 'image' ? spec.image : spec.video
-
-            // Determine card state
-            const isProcessing = job?.status === 'processing'
-            const isPending = job?.status === 'pending'
-            const isFailed = job?.status === 'failed' && !variant
-
-            return (
-              <div
-                key={platform}
-                className={cn(
-                  'card p-0 overflow-hidden flex flex-col transition-all duration-300',
-                  variant && 'border-emerald-800/40',
-                  isFailed && 'border-rose-800/40',
-                  (isProcessing || isPending) && 'border-brand-800/40'
-                )}
-              >
-                {/* Card header */}
-                <div className="flex items-center gap-2 px-3 py-2.5 border-b border-surface-border">
-                  {Logo && <Logo className="w-4 h-4 flex-shrink-0" />}
-                  <span className="text-xs font-medium truncate flex-1">{spec.label}</span>
-                  {variant ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  ) : isProcessing ? (
-                    <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin flex-shrink-0" />
-                  ) : isPending ? (
-                    <Clock className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
-                  ) : isFailed ? (
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+        {/* Right: platform filter + variant grid */}
+        <div className="space-y-4">
+          {/* Platform filter / generate section */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-white/70">Select platforms to generate</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleGenerate}
+                  disabled={isQueuing || selectedPlatforms.length === 0}
+                  className="btn-primary"
+                >
+                  {isQueuing ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Queuing…</>
                   ) : (
-                    <Clock className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                    <><Zap className="w-4 h-4" /> Generate{selectedPlatforms.length > 0 ? ` (${selectedPlatforms.length})` : ''}</>
                   )}
-                </div>
+                </button>
+              </div>
+            </div>
+            <PlatformSelector
+              platforms={targetPlatforms}
+              selected={selectedPlatforms}
+              onChange={setSelectedPlatforms}
+            />
+          </div>
 
-                {/* Preview area */}
-                <div className="aspect-square bg-surface relative overflow-hidden flex items-center justify-center">
-                  {variant ? (
-                    item.type === 'video' ? (
-                      <video src={variant.variant_url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+          {/* Platform variant grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+            {targetPlatforms.map((platform) => {
+              const spec = PLATFORM_SPECS[platform]
+              const variant = variantMap.get(platform)
+              const job = jobMap.get(platform)
+              const Logo = PLATFORM_LOGOS[platform]
+              const dims = item.type === 'image' ? spec.image : spec.video
+
+              // Determine card state
+              const isProcessing = job?.status === 'processing'
+              const isPending = job?.status === 'pending'
+              const isFailed = job?.status === 'failed' && !variant
+
+              return (
+                <div
+                  key={platform}
+                  className={cn(
+                    'card p-0 overflow-hidden flex flex-col transition-all duration-300',
+                    variant && 'border-emerald-800/40',
+                    isFailed && 'border-rose-800/40',
+                    (isProcessing || isPending) && 'border-brand-800/40'
+                  )}
+                >
+                  {/* Card header */}
+                  <div className="flex items-center gap-2 px-3 py-2.5 border-b border-surface-border">
+                    {Logo && <Logo className="w-4 h-4 flex-shrink-0" />}
+                    <span className="text-xs font-medium truncate flex-1">{spec.label}</span>
+                    {variant ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    ) : isProcessing ? (
+                      <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin flex-shrink-0" />
+                    ) : isPending ? (
+                      <Clock className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+                    ) : isFailed ? (
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
                     ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={variant.variant_url} alt={spec.label} className="w-full h-full object-cover" />
-                    )
-                  ) : (
-                    <div className="flex flex-col items-center justify-center gap-2 w-full h-full">
-                      {Logo && <Logo className="w-10 h-10 opacity-10" />}
-                      <span className={cn(
-                        'text-[11px] text-center px-2',
-                        isProcessing && 'text-brand-400/60 animate-pulse',
-                        isPending && 'text-white/30',
-                        isFailed && 'text-rose-400/60',
-                        !job && 'text-white/20'
-                      )}>
-                        {isProcessing ? 'Converting…' : isPending ? 'In queue…' : isFailed ? 'Failed' : 'Not generated yet'}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                      <Clock className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                    )}
+                  </div>
 
-                {/* Card footer */}
-                <div className="px-3 py-2.5 space-y-1.5">
-                  <p className="text-[10px] text-white/40">
-                    {dims ? `${dims.width} × ${dims.height} · ${dims.ratio}` : '—'}
-                  </p>
-                  {variant ? (
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] text-white/30">
-                        {(variant.file_size / 1024 / 1024).toFixed(1)} MB
-                      </span>
-                      <div className="flex gap-1.5">
+                  {/* Preview area — clickable when variant exists */}
+                  <div
+                    className={cn(
+                      'aspect-square bg-surface relative overflow-hidden flex items-center justify-center',
+                      variant && 'cursor-pointer'
+                    )}
+                    onClick={() => {
+                      if (variant) setPreviewVariant(variant)
+                    }}
+                  >
+                    {variant ? (
+                      item.type === 'video' ? (
+                        <video src={variant.variant_url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={variant.variant_url} alt={spec.label} className="w-full h-full object-cover" />
+                      )
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2 w-full h-full">
+                        {Logo && <Logo className="w-10 h-10 opacity-10" />}
+                        <span className={cn(
+                          'text-[11px] text-center px-2',
+                          isProcessing && 'text-brand-400/60 animate-pulse',
+                          isPending && 'text-white/30',
+                          isFailed && 'text-rose-400/60',
+                          !job && 'text-white/20'
+                        )}>
+                          {isProcessing ? 'Converting…' : isPending ? 'In queue…' : isFailed ? 'Failed' : 'Not generated yet'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card footer */}
+                  <div className="px-3 py-2.5 space-y-1.5">
+                    <p className="text-[10px] text-white/40">
+                      {dims ? `${dims.width} × ${dims.height} · ${dims.ratio}` : '—'}
+                    </p>
+                    {variant ? (
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] text-white/30">
+                          {(variant.file_size / 1024 / 1024).toFixed(1)} MB
+                        </span>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleDownload(variant)}
+                            disabled={downloadingPlatform === variant.platform}
+                            className="flex-1 flex items-center justify-center gap-1 text-[10px] bg-brand-600/20 hover:bg-brand-600/40 text-brand-400 hover:text-brand-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
+                          >
+                            {downloadingPlatform === variant.platform
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Download className="w-3 h-3" />}
+                            Save
+                          </button>
+                          <button
+                            onClick={() => handleCopyLink(variant)}
+                            className="flex items-center justify-center gap-1 text-[10px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded px-1.5 py-1 transition-colors"
+                            title="Copy public link"
+                          >
+                            {copiedPlatform === variant.platform
+                              ? <Check className="w-3 h-3 text-emerald-400" />
+                              : <Copy className="w-3 h-3" />}
+                          </button>
+                          {item.type === 'image' && (
+                            <button
+                              onClick={() => setCropTarget({ platform, variant })}
+                              className="flex items-center justify-center gap-1 text-[10px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded px-1.5 py-1 transition-colors"
+                              title="Edit crop"
+                            >
+                              <Crop className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : isFailed ? (
+                      <div className="space-y-1.5">
+                        {job?.error_message && (
+                          <p className="text-[10px] text-rose-400/70 truncate" title={job.error_message}>
+                            {job.error_message}
+                          </p>
+                        )}
                         <button
-                          onClick={() => handleDownload(variant)}
-                          disabled={downloadingPlatform === variant.platform}
-                          className="flex-1 flex items-center justify-center gap-1 text-[10px] bg-brand-600/20 hover:bg-brand-600/40 text-brand-400 hover:text-brand-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
+                          onClick={() => handleDismissFailedJob(platform)}
+                          className="w-full flex items-center justify-center gap-1 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400/70 hover:text-rose-400 rounded px-1.5 py-1 transition-colors"
+                          title="Dismiss error"
                         >
-                          {downloadingPlatform === variant.platform
-                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                            : <Download className="w-3 h-3" />}
-                          Save
-                        </button>
-                        <button
-                          onClick={() => handleCopyLink(variant)}
-                          className="flex items-center justify-center gap-1 text-[10px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded px-1.5 py-1 transition-colors"
-                          title="Copy shareable link (valid 1 hour)"
-                        >
-                          {copiedPlatform === variant.platform
-                            ? <Check className="w-3 h-3 text-emerald-400" />
-                            : <Copy className="w-3 h-3" />}
+                          <X className="w-3 h-3" />
+                          Dismiss
                         </button>
                       </div>
-                    </div>
-                  ) : isFailed && job?.error_message ? (
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] text-rose-400/70 truncate" title={job.error_message}>
-                        {job.error_message}
-                      </p>
-                      <button
-                        onClick={() => handleGeneratePlatform(platform)}
-                        disabled={queuingPlatform === platform}
-                        className="w-full flex items-center justify-center gap-1 text-[10px] bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 hover:text-rose-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
-                      >
-                        {queuingPlatform === platform
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <Zap className="w-3 h-3" />}
-                        Retry
-                      </button>
-                    </div>
-                  ) : isPending || isProcessing ? (
-                    <span className="text-[10px] text-white/20">—</span>
-                  ) : (
-                    <button
-                      onClick={() => handleGeneratePlatform(platform)}
-                      disabled={queuingPlatform === platform || isQueuing}
-                      className="w-full flex items-center justify-center gap-1 text-[10px] bg-brand-600/15 hover:bg-brand-600/30 text-brand-400 hover:text-brand-300 rounded px-1.5 py-1 transition-colors disabled:opacity-50"
-                    >
-                      {queuingPlatform === platform
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <Zap className="w-3 h-3" />}
-                      Generate
-                    </button>
-                  )}
+                    ) : isPending || isProcessing ? (
+                      <span className="text-[10px] text-white/20">—</span>
+                    ) : (
+                      <p className="text-[10px] text-white/20">Select above to generate</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </div>
+
+      {/* ── Image preview modal ───────────────────────────────────────────── */}
+      {previewVariant && (
+        <ImagePreviewModal
+          isOpen={true}
+          onClose={() => setPreviewVariant(null)}
+          imageUrl={previewVariant.variant_url}
+          platform={previewVariant.platform}
+          platformLabel={PLATFORM_SPECS[previewVariant.platform as Platform]?.label ?? previewVariant.platform}
+          width={previewVariant.width}
+          height={previewVariant.height}
+        />
+      )}
+
+      {/* ── Crop editor modal ─────────────────────────────────────────────── */}
+      {cropTarget && (
+        <CropEditor
+          isOpen={true}
+          onClose={() => setCropTarget(null)}
+          originalUrl={item.original_url}
+          targetWidth={PLATFORM_SPECS[cropTarget.platform]?.image?.width ?? 1080}
+          targetHeight={PLATFORM_SPECS[cropTarget.platform]?.image?.height ?? 1080}
+          platform={cropTarget.platform}
+          platformLabel={PLATFORM_SPECS[cropTarget.platform]?.label ?? cropTarget.platform}
+          contentItemId={item.id}
+          onSuccess={() => setCropTarget(null)}
+        />
+      )}
     </div>
   )
 }
