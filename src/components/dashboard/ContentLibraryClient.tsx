@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -122,7 +122,7 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
   const [typeFilter,     setTypeFilter]     = useState<'all' | 'image' | 'video'>('all')
   const [ratioFilter,    setRatioFilter]    = useState<RatioCategory | 'all'>('all')
   const [coverageFilter, setCoverageFilter] = useState<'all' | 'has' | 'none'>('all')
-  const [platformFilter, setPlatformFilter] = useState<string>('all')
+  const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set())
   const [sort,           setSort]           = useState<'newest' | 'oldest' | 'largest' | 'variants'>('newest')
   const [viewMode,       setViewMode]       = useState<'grid' | 'list'>('grid')
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
@@ -177,13 +177,13 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
     } else if (coverageFilter === 'none') {
       filtered = filtered.filter((i) => i.content_variants.length === 0)
     }
-    if (platformFilter !== 'all') {
-      const group = PLATFORM_GROUPS.find((g) => g.key === platformFilter)
-      if (group) {
-        filtered = filtered.filter((i) =>
-          i.content_variants.some((v) => group.platforms.includes(v.platform as Platform))
-        )
-      }
+    if (platformFilter.size > 0) {
+      const selectedGroupPlatforms = PLATFORM_GROUPS
+        .filter((g) => platformFilter.has(g.key))
+        .flatMap((g) => g.platforms)
+      filtered = filtered.filter((i) =>
+        i.content_variants.some((v) => selectedGroupPlatforms.includes(v.platform as Platform))
+      )
     }
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -199,7 +199,7 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
     typeFilter !== 'all',
     ratioFilter !== 'all',
     coverageFilter !== 'all',
-    platformFilter !== 'all',
+    platformFilter.size > 0,
     search.trim() !== '',
   ].filter(Boolean).length
 
@@ -207,7 +207,7 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
     setTypeFilter('all')
     setRatioFilter('all')
     setCoverageFilter('all')
-    setPlatformFilter('all')
+    setPlatformFilter(new Set())
     setSearch('')
   }
 
@@ -297,6 +297,18 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
           </div>
 
           <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
+            className={cn('input w-auto bg-surface-card', typeFilter !== 'all' && 'border-brand-500')}
+          >
+            <option value="all">All Types</option>
+            <option value="image">Images</option>
+            <option value="video">Videos</option>
+          </select>
+
+          <PlatformDropdown selected={platformFilter} onChange={setPlatformFilter} />
+
+          <select
             value={sort}
             onChange={(e) => setSort(e.target.value as typeof sort)}
             className="input w-auto bg-surface-card"
@@ -327,17 +339,6 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
         <div className="flex flex-wrap gap-x-3 gap-y-2 items-center">
           <SlidersHorizontal className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
 
-          {/* Type */}
-          <FilterGroup label="Type">
-            {(['all', 'image', 'video'] as const).map((f) => (
-              <FilterChip key={f} active={typeFilter === f} onClick={() => setTypeFilter(f)}>
-                {f === 'all' ? 'All' : f === 'image' ? '🖼 Images' : '🎬 Videos'}
-              </FilterChip>
-            ))}
-          </FilterGroup>
-
-          <Divider />
-
           {/* Aspect ratio */}
           <FilterGroup label="Ratio">
             {([
@@ -364,19 +365,6 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
             ] as [typeof coverageFilter, string][]).map(([val, label]) => (
               <FilterChip key={val} active={coverageFilter === val} onClick={() => setCoverageFilter(val)}>
                 {label}
-              </FilterChip>
-            ))}
-          </FilterGroup>
-
-          <Divider />
-
-          {/* Platform */}
-          <FilterGroup label="Platform">
-            <FilterChip active={platformFilter === 'all'} onClick={() => setPlatformFilter('all')}>Any</FilterChip>
-            {PLATFORM_GROUPS.map((g) => (
-              <FilterChip key={g.key} active={platformFilter === g.key} onClick={() => setPlatformFilter(g.key)}>
-                <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: g.color }} />
-                {g.label}
               </FilterChip>
             ))}
           </FilterGroup>
@@ -479,6 +467,85 @@ export default function ContentLibraryClient({ userId }: { userId: string }) {
           <button onClick={handleLoadMore} disabled={isLoadingMore} className="btn-secondary">
             {isLoadingMore ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading…</> : 'Load more'}
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Platform multi-select dropdown ────────────────────────────────────────────
+
+function PlatformDropdown({
+  selected,
+  onChange,
+}: {
+  selected: Set<string>
+  onChange: (next: Set<string>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  function toggle(key: string) {
+    const next = new Set(selected)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    onChange(next)
+  }
+
+  const label =
+    selected.size === 0
+      ? 'All Platforms'
+      : selected.size === 1
+      ? PLATFORM_GROUPS.find((g) => selected.has(g.key))?.label ?? '1 platform'
+      : `${selected.size} platforms`
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'input w-auto bg-surface-card flex items-center gap-2 pr-7 relative',
+          selected.size > 0 && 'border-brand-500 text-white'
+        )}
+      >
+        <span className="text-sm truncate max-w-[120px]">{label}</span>
+        <svg className={cn('w-3 h-3 text-white/40 absolute right-2 transition-transform', open && 'rotate-180')} viewBox="0 0 12 12" fill="none">
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-30 bg-surface-card border border-surface-border rounded-xl shadow-xl min-w-[160px] py-1 overflow-hidden">
+          {PLATFORM_GROUPS.map((g) => (
+            <label key={g.key} className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface-border/50 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={selected.has(g.key)}
+                onChange={() => toggle(g.key)}
+                className="w-3.5 h-3.5 rounded accent-brand-500"
+              />
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: g.color }} />
+              <span className="text-sm text-white/80">{g.label}</span>
+            </label>
+          ))}
+          {selected.size > 0 && (
+            <button
+              onClick={() => { onChange(new Set()); setOpen(false) }}
+              className="w-full text-left px-3 py-2 text-xs text-white/40 hover:text-white/70 border-t border-surface-border/40 transition-colors mt-0.5"
+            >
+              Clear selection
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -1,7 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { PLATFORM_SPECS, type Platform } from '@/lib/constants/platforms'
-import sharp from 'sharp'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -14,17 +13,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { contentItemId, platform, cropX, cropY, cropW, cropH } = body as {
-      contentItemId: string
-      platform: string
-      cropX: number
-      cropY: number
-      cropW: number
-      cropH: number
-    }
+    const formData = await request.formData()
+    const imageFile = formData.get('image') as File | null
+    const contentItemId = formData.get('contentItemId') as string | null
+    const platform = formData.get('platform') as string | null
 
-    if (!contentItemId || !platform || cropX == null || cropY == null || !cropW || !cropH) {
+    if (!imageFile || !contentItemId || !platform) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -33,7 +27,7 @@ export async function POST(request: NextRequest) {
     // Verify ownership
     const { data: item, error: itemError } = await admin
       .from('content_items')
-      .select('id, type, storage_path')
+      .select('id, type')
       .eq('id', contentItemId)
       .eq('user_id', user.id)
       .single()
@@ -49,28 +43,12 @@ export async function POST(request: NextRequest) {
 
     const { width: targetW, height: targetH } = spec.image
 
-    // Download original
-    const { data: blob, error: downloadError } = await admin.storage
-      .from('content')
-      .download(item.storage_path)
+    // Convert uploaded File to Buffer
+    const imageBuffer = Buffer.from(await imageFile.arrayBuffer())
 
-    if (downloadError || !blob) {
-      return NextResponse.json({ error: 'Failed to download original' }, { status: 500 })
-    }
-
-    const originalBuffer = Buffer.from(await blob.arrayBuffer())
-
-    // Process: extract the user-chosen crop region then resize to exact target
-    const variantBuffer = await sharp(originalBuffer)
-      .rotate() // honour EXIF
-      .extract({ left: Math.round(cropX), top: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) })
-      .resize(targetW, targetH, { fit: 'fill', kernel: 'lanczos3' })
-      .jpeg({ quality: 95, mozjpeg: true, chromaSubsampling: '4:4:4' })
-      .toBuffer()
-
-    // Upload to processed bucket using user's supabase client (RLS INSERT policy exists)
+    // Upload to processed bucket
     const storagePath = `${user.id}/${contentItemId}/${platform}.jpg`
-    const uploadBlob = new Blob([new Uint8Array(variantBuffer)], { type: 'image/jpeg' })
+    const uploadBlob = new Blob([new Uint8Array(imageBuffer)], { type: 'image/jpeg' })
 
     const { error: uploadError } = await admin.storage
       .from('processed')
@@ -93,7 +71,7 @@ export async function POST(request: NextRequest) {
           storage_path: storagePath,
           width: targetW,
           height: targetH,
-          file_size: variantBuffer.length,
+          file_size: imageBuffer.length,
         },
         { onConflict: 'content_item_id,platform' }
       )
