@@ -20,17 +20,24 @@ export default async function DashboardPage() {
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user!.id)
 
-  const { count: postCount } = await supabase
-    .from('posts')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user!.id)
-    .eq('status', 'published')
+  const [{ count: postCount }, { count: connectedCount }] = await Promise.all([
+    supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user!.id)
+      .eq('status', 'published'),
+    supabase
+      .from('connected_accounts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user!.id)
+      .eq('is_active', true),
+  ])
 
   const stats = [
     { label: 'Total Uploads', value: contentCount ?? 0, icon: Upload, color: 'text-brand-400' },
     { label: 'Posts Published', value: postCount ?? 0, icon: Video, color: 'text-emerald-400' },
     { label: 'AI Credits Used', value: profile?.ai_credits_used ?? 0, icon: Zap, color: 'text-amber-400' },
-    { label: 'Platforms Connected', value: 0, icon: TrendingUp, color: 'text-purple-400' },
+    { label: 'Platforms Connected', value: connectedCount ?? 0, icon: TrendingUp, color: 'text-purple-400' },
   ]
 
   const quickActions = [

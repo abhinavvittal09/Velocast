@@ -108,7 +108,7 @@ export default function TransformClient({
   const [copiedPlatform, setCopiedPlatform] = useState<string | null>(null)
   const [isZipping, setIsZipping] = useState(false)
   const [previewVariant, setPreviewVariant] = useState<ContentVariant | null>(null)
-  const [cropTarget, setCropTarget] = useState<{ platform: Platform; variant: ContentVariant } | null>(null)
+  const [cropTarget, setCropTarget] = useState<{ platform: Platform } | null>(null)
   // Cache-busted URLs keyed by platform, set after a successful re-crop
   const [freshUrls, setFreshUrls] = useState<Record<string, string>>({})
 
@@ -482,7 +482,18 @@ export default function TransformClient({
                         </button>
                       </div>
                     ) : (
-                      <span className="text-xs text-white/20">—</span>
+                      item.type === 'image' ? (
+                        <button
+                          onClick={() => setCropTarget({ platform })}
+                          className="flex items-center gap-1 text-[11px] text-white/30 hover:text-brand-400 transition-colors px-1.5 py-0.5 rounded hover:bg-brand-950/40"
+                          title="Crop & create variant"
+                        >
+                          <Crop className="w-3 h-3" />
+                          Crop
+                        </button>
+                      ) : (
+                        <span className="text-xs text-white/20">—</span>
+                      )
                     )}
                   </div>
                 )
@@ -574,7 +585,7 @@ export default function TransformClient({
                             </button>
                             {item.type === 'image' && (
                               <button
-                                onClick={() => setCropTarget({ platform: variant.platform as Platform, variant })}
+                                onClick={() => setCropTarget({ platform: variant.platform as Platform })}
                                 className="flex items-center justify-center gap-1 text-[11px] bg-surface-border/60 hover:bg-surface-border text-white/50 hover:text-white/80 rounded-md px-2 py-1.5 transition-colors"
                                 title="Edit"
                               >
