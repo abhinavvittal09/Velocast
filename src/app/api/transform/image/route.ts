@@ -13,12 +13,15 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
+      console.error('[transform/image] Auth failed:', authError?.message)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
     const contentItemId: string = body.contentItemId
     const requestedPlatforms: Platform[] | undefined = body.platforms
+
+    console.log('[transform/image] user:', user.id, 'item:', contentItemId, 'platforms:', requestedPlatforms)
 
     if (!contentItemId) {
       return NextResponse.json({ error: 'contentItemId is required' }, { status: 400 })
@@ -35,6 +38,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (itemError || !item || item.type !== 'image') {
+      console.error('[transform/image] Item lookup failed:', { itemError: itemError?.message, item, type: item?.type })
       return NextResponse.json({ error: 'Image content item not found' }, { status: 404 })
     }
 
@@ -42,26 +46,34 @@ export async function POST(request: NextRequest) {
       ? requestedPlatforms.filter((p) => PLATFORM_SPECS[p]?.image)
       : IMAGE_PLATFORMS
 
+    console.log('[transform/image] targetPlatforms:', targetPlatforms)
+
     // ── Avoid re-queuing platforms already being processed ─
-    const { data: processingJobs } = await admin
+    const { data: processingJobs, error: processingErr } = await admin
       .from('transform_jobs')
       .select('platform')
       .eq('content_item_id', contentItemId)
       .in('platform', targetPlatforms)
       .eq('status', 'processing')
 
+    if (processingErr) console.error('[transform/image] processingJobs query error:', processingErr.message)
+
     const processingSet = new Set((processingJobs ?? []).map((j) => j.platform))
 
     // Delete existing non-processing jobs only for the target platforms so we
     // don't accidentally wipe jobs for other platforms the user didn't request.
     const platformsToQueue = targetPlatforms.filter((p) => !processingSet.has(p))
+    console.log('[transform/image] platformsToQueue:', platformsToQueue)
+
     if (platformsToQueue.length > 0) {
-      await admin
+      const { error: deleteErr } = await admin
         .from('transform_jobs')
         .delete()
         .eq('content_item_id', contentItemId)
         .in('platform', platformsToQueue)
         .neq('status', 'processing')
+
+      if (deleteErr) console.error('[transform/image] delete error:', deleteErr.message)
     }
 
     if (platformsToQueue.length > 0) {
@@ -75,8 +87,8 @@ export async function POST(request: NextRequest) {
       )
 
       if (insertError) {
-        console.error('Job enqueue error:', insertError)
-        return NextResponse.json({ error: 'Failed to queue jobs' }, { status: 500 })
+        console.error('[transform/image] insert error:', insertError.message, insertError.details, insertError.hint)
+        return NextResponse.json({ error: 'Failed to queue jobs', detail: insertError.message }, { status: 500 })
       }
 
       // Trigger the processor immediately. The non-awaited fetch keeps the
@@ -86,16 +98,19 @@ export async function POST(request: NextRequest) {
       const authHeaders: HeadersInit = process.env.CRON_SECRET
         ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
         : {}
-      fetch(processorUrl, { headers: authHeaders }).catch(() => {})
+      fetch(processorUrl, { headers: authHeaders }).catch((e) => {
+        console.error('[transform/image] processor trigger error:', e)
+      })
     }
 
+    console.log('[transform/image] success, queued:', platformsToQueue.length)
     return NextResponse.json({
       queued: platformsToQueue.length,
       skipped: processingSet.size,
       platforms: platformsToQueue,
     })
   } catch (err) {
-    console.error('Image enqueue error:', err)
+    console.error('[transform/image] unhandled error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
