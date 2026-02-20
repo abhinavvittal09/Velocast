@@ -16,7 +16,7 @@ interface CropEditorProps {
   platform: string
   platformLabel: string
   contentItemId: string
-  onSuccess: () => void
+  onSuccess: (platform: string, variantUrl: string) => void
 }
 
 interface TransformState {
@@ -323,8 +323,9 @@ export default function CropEditor({
         return
       }
 
+      const data = await res.json() as { variantUrl?: string }
       toast.success(`${platformLabel} variant saved`)
-      onSuccess()
+      onSuccess(platform, data.variantUrl ?? '')
       onClose()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unexpected error'

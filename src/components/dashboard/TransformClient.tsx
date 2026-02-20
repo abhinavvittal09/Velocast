@@ -109,6 +109,8 @@ export default function TransformClient({
   const [isZipping, setIsZipping] = useState(false)
   const [previewVariant, setPreviewVariant] = useState<ContentVariant | null>(null)
   const [cropTarget, setCropTarget] = useState<{ platform: Platform; variant: ContentVariant } | null>(null)
+  // Cache-busted URLs keyed by platform, set after a successful re-crop
+  const [freshUrls, setFreshUrls] = useState<Record<string, string>>({})
 
   const supabase = useMemo(() => createClient(), [])
   const targetPlatforms = item.type === 'image' ? IMAGE_PLATFORMS : VIDEO_PLATFORMS
@@ -291,6 +293,23 @@ export default function TransformClient({
       next.delete(platform)
       return next
     })
+  }
+
+  // ── After crop: cache-bust the image URL + re-fetch variants ─────────────
+  async function handleCropSuccess(platform: string, variantUrl: string) {
+    setCropTarget(null)
+    // Append a timestamp so the browser fetches the new image instead of serving cache
+    if (variantUrl) {
+      setFreshUrls(prev => ({ ...prev, [platform]: `${variantUrl}?cb=${Date.now()}` }))
+    }
+    // Re-fetch all variants so variantMap is up-to-date (covers new variants too)
+    const { data } = await supabase
+      .from('content_variants')
+      .select('*')
+      .eq('content_item_id', item.id)
+    if (data) {
+      setVariantMap(new Map((data as ContentVariant[]).map((v) => [v.platform, v])))
+    }
   }
 
   return (
@@ -510,7 +529,7 @@ export default function TransformClient({
                           ) : (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={variant.variant_url}
+                              src={freshUrls[variant.platform] ?? variant.variant_url}
                               alt={spec?.label ?? ''}
                               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                             />
@@ -597,7 +616,7 @@ export default function TransformClient({
           platform={cropTarget.platform}
           platformLabel={PLATFORM_SPECS[cropTarget.platform]?.label ?? cropTarget.platform}
           contentItemId={item.id}
-          onSuccess={() => setCropTarget(null)}
+          onSuccess={handleCropSuccess}
         />
       )}
     </div>
